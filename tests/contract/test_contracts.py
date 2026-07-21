@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from threading import Event
+from time import sleep
 
 import pytest
 
 from rippleguard_agent_runtime.adapters.contracts import ContractValidationError
 from rippleguard_agent_runtime.adapters.xgboost_model import XGBoostModelAdapter
+from rippleguard_agent_runtime.domain.errors import AgentFailure
 from rippleguard_agent_runtime.loan_decision.features import feature_payload_digest
+from rippleguard_agent_runtime.loan_decision.service import LoanDecisionAgentService
 
 
 def test_valid_request_generates_schema_valid_completed_result(
@@ -153,3 +157,87 @@ def test_concurrent_duplicate_identical_request_single_flights(
     assert calls == 1
     assert len({result["proposal"]["proposalId"] for result in results}) == 1
     assert all(result == results[0] for result in results)
+
+
+def test_unexpected_exception_releases_waiting_duplicate_request(
+    monkeypatch: pytest.MonkeyPatch, service: object, valid_request: dict[str, object]
+) -> None:
+    first_predict_started = Event()
+    calls = 0
+    original_predict = XGBoostModelAdapter.predict
+
+    def flaky_predict(self: XGBoostModelAdapter, features: object) -> object:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            first_predict_started.set()
+            sleep(0.1)
+            raise RuntimeError("unexpected inference failure")
+        return original_predict(self, features)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(XGBoostModelAdapter, "predict", flaky_predict)
+
+    def run_once(payload: dict[str, object]) -> dict[str, object] | str:
+        try:
+            return service.run(payload)  # type: ignore[attr-defined,no-any-return]
+        except RuntimeError:
+            return "raised"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_future = executor.submit(run_once, deepcopy(valid_request))
+        assert first_predict_started.wait(timeout=5)
+        second_future = executor.submit(run_once, deepcopy(valid_request))
+        results = [first_future.result(timeout=5), second_future.result(timeout=5)]
+
+    assert "raised" in results
+    completed = [result for result in results if isinstance(result, dict)]
+    assert len(completed) == 1
+    assert completed[0]["resultStatus"] == "COMPLETED"
+    assert calls == 2
+
+
+def test_retryable_failure_reexecution_uses_next_attempt(
+    monkeypatch: pytest.MonkeyPatch, service: object, valid_request: dict[str, object]
+) -> None:
+    calls = 0
+    original_threshold = LoanDecisionAgentService._threshold
+
+    def flaky_threshold(self: LoanDecisionAgentService, threshold_version: str) -> float:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise AgentFailure("RETRYABLE", "AGENT_RUNTIME_TEMPORARY_FAILURE", "Temporary threshold load failure.")
+        return original_threshold(self, threshold_version)
+
+    monkeypatch.setattr(LoanDecisionAgentService, "_threshold", flaky_threshold)
+    first = service.run(valid_request)  # type: ignore[attr-defined]
+    second = service.run(valid_request)  # type: ignore[attr-defined]
+
+    assert first["resultStatus"] == "FAILED"
+    assert first["failure"]["classification"] == "RETRYABLE"
+    assert first["agentRun"]["attemptId"] == 1
+    assert second["resultStatus"] == "COMPLETED"
+    assert second["agentRun"]["attemptId"] == 2
+
+
+def test_recoverable_blocked_failure_is_not_cached(
+    monkeypatch: pytest.MonkeyPatch, service: object, valid_request: dict[str, object]
+) -> None:
+    calls = 0
+    original_threshold = LoanDecisionAgentService._threshold
+
+    def missing_then_present(self: LoanDecisionAgentService, threshold_version: str) -> float:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise AgentFailure("BLOCKED", "MODEL_MANIFEST_NOT_FOUND", "Model manifest was not found.")
+        return original_threshold(self, threshold_version)
+
+    monkeypatch.setattr(LoanDecisionAgentService, "_threshold", missing_then_present)
+    first = service.run(valid_request)  # type: ignore[attr-defined]
+    second = service.run(valid_request)  # type: ignore[attr-defined]
+
+    assert first["resultStatus"] == "FAILED"
+    assert first["failure"]["reasonCode"] == "MODEL_MANIFEST_NOT_FOUND"
+    assert second["resultStatus"] == "COMPLETED"
+    assert calls == 2

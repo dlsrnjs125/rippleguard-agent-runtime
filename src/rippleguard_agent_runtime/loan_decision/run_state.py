@@ -73,10 +73,13 @@ class AgentRunStateRepository:
                 elif entry.result is not None and _is_cacheable(entry.result):
                     return entry.attempt_id, entry.result
                 else:
+                    attempt = self._attempts.get(agent_run_id, 0) + 1
+                    self._attempts[agent_run_id] = attempt
+                    entry.attempt_id = attempt
                     entry.status = RunStatus.IN_PROGRESS
                     entry.result = None
                     entry.done.clear()
-                    return entry.attempt_id, None
+                    return attempt, None
             done.wait()
 
     def complete(self, request: dict[str, Any], identity: AgentRunInputIdentity, result: dict[str, Any]) -> None:
@@ -87,6 +90,16 @@ class AgentRunStateRepository:
                 return
             entry.result = result
             entry.status = RunStatus.COMPLETED if result.get("resultStatus") == "COMPLETED" else RunStatus.FAILED
+            entry.done.set()
+
+    def abort(self, request: dict[str, Any], identity: AgentRunInputIdentity) -> None:
+        agent_run_id = str(request["agentRunId"])
+        with self._lock:
+            entry = self._entries.get(agent_run_id)
+            if entry is None or entry.identity != identity:
+                return
+            entry.result = None
+            entry.status = RunStatus.FAILED
             entry.done.set()
 
     def allocate_attempt(self, request: dict[str, Any]) -> int:
@@ -103,7 +116,16 @@ def _is_cacheable(result: dict[str, Any]) -> bool:
     failure = result.get("failure")
     if not isinstance(failure, dict):
         return False
-    return failure.get("classification") in {"BLOCKED", "NON_RETRYABLE"}
+    return failure.get("reasonCode") in {
+        "AGENT_RUN_INPUT_CONFLICT",
+        "FEATURE_REQUIRED_MISSING",
+        "FEATURE_SCHEMA_VERSION_UNSUPPORTED",
+        "FEATURE_TYPE_INVALID",
+        "FEATURE_UNKNOWN",
+        "FEATURE_VALUE_OUT_OF_RANGE",
+        "MODEL_ARTIFACT_DIGEST_MISMATCH",
+        "SNAPSHOT_DIGEST_MISMATCH",
+    }
 
 
 def input_identity(request: dict[str, Any]) -> AgentRunInputIdentity:

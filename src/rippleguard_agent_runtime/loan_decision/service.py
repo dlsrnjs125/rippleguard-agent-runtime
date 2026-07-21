@@ -82,6 +82,10 @@ class LoanDecisionAgentService:
             result = build_failed_result(request, configuration_failure, attempt_id, started_at)
             if identity is not None:
                 self.run_state.complete(request, identity, result)
+        except Exception:
+            if identity is not None:
+                self.run_state.abort(request, identity)
+            raise
         self.validator.validate("agent-output/loan-decision-agent-result.v1.0.0.schema.json", result)
         return result
 
