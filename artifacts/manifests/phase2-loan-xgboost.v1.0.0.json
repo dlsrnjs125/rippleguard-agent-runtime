@@ -36,7 +36,7 @@
   "targetDefinition": "repayment within agreed term",
   "threadCount": 1,
   "thresholdVersion": "threshold.v1.0.0",
-  "trainingCodeCommit": "1272dcf985d4c0f782c8c98a368f628df178d7c4",
+  "trainingCodeCommit": "99022f07ee439e309b515bccec8a3d351a070349",
   "trainingDatasetDigest": "sha256:e5f06c79a60c3c3819276226c4841da5963ca8b6af7f8e2bbe9b42359e546cf4",
   "trainingDatasetReference": "dataset://synthetic-loans/train/v1"
 }

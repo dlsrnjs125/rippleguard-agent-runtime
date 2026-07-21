@@ -10,7 +10,7 @@
     "f1": 0.591716,
     "pr_auc": 0.760304,
     "precision": 0.746269,
-    "prediction_latency_ms": 0.004666,
+    "prediction_latency_ms": 0.004625,
     "recall": 0.490196,
     "roc_auc": 0.644439,
     "threshold": 0.72
@@ -23,7 +23,7 @@
         "f1": 0.591716,
         "pr_auc": 0.760304,
         "precision": 0.746269,
-        "prediction_latency_ms": 0.004666,
+        "prediction_latency_ms": 0.004625,
         "recall": 0.490196,
         "roc_auc": 0.644439,
         "threshold": 0.72
@@ -38,12 +38,12 @@
         "f1": 0.566265,
         "pr_auc": 0.764623,
         "precision": 0.734375,
-        "prediction_latency_ms": 0.003792,
+        "prediction_latency_ms": 0.014791,
         "recall": 0.460784,
         "roc_auc": 0.642748,
         "shap_tree_explainer_compatible": true,
         "threshold": 0.72,
-        "training_latency_ms": 7.20425
+        "training_latency_ms": 24.457375
       },
       "reason": "offline comparison candidate only; runtime registers one selected model and no fallback",
       "status": "not_selected"
