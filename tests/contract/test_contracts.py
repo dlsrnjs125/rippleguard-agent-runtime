@@ -11,6 +11,8 @@ from rippleguard_agent_runtime.adapters.contracts import ContractValidationError
 from rippleguard_agent_runtime.adapters.xgboost_model import XGBoostModelAdapter
 from rippleguard_agent_runtime.domain.errors import AgentFailure
 from rippleguard_agent_runtime.loan_decision.features import feature_payload_digest
+import rippleguard_agent_runtime.loan_decision.service as service_module
+from rippleguard_agent_runtime.loan_decision import result_builder
 from rippleguard_agent_runtime.loan_decision.service import LoanDecisionAgentService
 
 
@@ -239,5 +241,28 @@ def test_recoverable_blocked_failure_is_not_cached(
 
     assert first["resultStatus"] == "FAILED"
     assert first["failure"]["reasonCode"] == "MODEL_MANIFEST_NOT_FOUND"
+    assert second["resultStatus"] == "COMPLETED"
+    assert calls == 2
+
+
+def test_invalid_completed_result_is_not_cached(
+    monkeypatch: pytest.MonkeyPatch, service: object, valid_request: dict[str, object]
+) -> None:
+    calls = 0
+    original_builder = result_builder.build_completed_result
+
+    def invalid_then_valid(*args: object, **kwargs: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        result = original_builder(*args, **kwargs)  # type: ignore[arg-type]
+        if calls == 1:
+            result["proposal"]["reasonCodes"] = ["MODEL_SCORE_BELOW_THRESHOLD"]  # type: ignore[index]
+        return result
+
+    monkeypatch.setattr(service_module, "build_completed_result", invalid_then_valid)
+    with pytest.raises(ContractValidationError):
+        service.run(valid_request)  # type: ignore[attr-defined]
+
+    second = service.run(valid_request)  # type: ignore[attr-defined]
     assert second["resultStatus"] == "COMPLETED"
     assert calls == 2

@@ -6,13 +6,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from rippleguard_agent_runtime.adapters.contracts import ContractValidationError, ContractValidator
+from rippleguard_agent_runtime.adapters.contracts import ContractValidator
 from rippleguard_agent_runtime.adapters.xgboost_model import XGBoostModelAdapter
 from rippleguard_agent_runtime.domain.errors import AgentFailure
 from rippleguard_agent_runtime.loan_decision.features import feature_values, validate_and_prepare_features
 from rippleguard_agent_runtime.loan_decision.manifest import load_manifest, verify_manifest_request, verify_runtime_compatibility
 from rippleguard_agent_runtime.loan_decision.result_builder import build_completed_result, build_failed_result
-from rippleguard_agent_runtime.loan_decision.run_state import AgentRunInputConflict, AgentRunStateRepository, input_identity
+from rippleguard_agent_runtime.loan_decision.run_state import (
+    AgentRunInputConflict,
+    AgentRunInputIdentity,
+    AgentRunStateRepository,
+    input_identity,
+)
 
 
 class LoanDecisionAgentService:
@@ -41,6 +46,7 @@ class LoanDecisionAgentService:
             identity = input_identity(request)
             attempt_id, cached_result = self.run_state.begin(request, identity)
             if cached_result is not None:
+                self._validate_result(cached_result)
                 return cached_result
             manifest = load_manifest(self.manifest_path, self.validator)
             verify_runtime_compatibility(manifest)
@@ -63,7 +69,7 @@ class LoanDecisionAgentService:
                 attempt_id,
                 started_at,
             )
-            self.run_state.complete(request, identity, result)
+            self._validate_and_complete(request, identity, result)
         except AgentRunInputConflict as failure:
             attempt_id = failure.attempt_id
             result = build_failed_result(request, failure, attempt_id, started_at)
@@ -72,8 +78,8 @@ class LoanDecisionAgentService:
                 attempt_id = self.run_state.allocate_attempt(request)
             result = build_failed_result(request, failure, attempt_id, started_at)
             if identity is not None:
-                self.run_state.complete(request, identity, result)
-        except (json.JSONDecodeError, ContractValidationError):
+                self._validate_and_complete(request, identity, result)
+        except json.JSONDecodeError:
             if identity is None:
                 attempt_id = self.run_state.allocate_attempt(request)
             configuration_failure = AgentFailure(
@@ -81,12 +87,12 @@ class LoanDecisionAgentService:
             )
             result = build_failed_result(request, configuration_failure, attempt_id, started_at)
             if identity is not None:
-                self.run_state.complete(request, identity, result)
+                self._validate_and_complete(request, identity, result)
         except Exception:
             if identity is not None:
                 self.run_state.abort(request, identity)
             raise
-        self.validator.validate("agent-output/loan-decision-agent-result.v1.0.0.schema.json", result)
+        self._validate_result(result)
         return result
 
     def _threshold(self, threshold_version: str) -> float:
@@ -104,6 +110,18 @@ class LoanDecisionAgentService:
         if float(value) < 0 or float(value) > 1:
             raise AgentFailure("VALIDATION_REQUIRED", "CONTRACT_VALIDATION_FAILED", "Threshold value is invalid.")
         return float(value)
+
+    def _validate_result(self, result: dict[str, Any]) -> None:
+        self.validator.validate("agent-output/loan-decision-agent-result.v1.0.0.schema.json", result)
+
+    def _validate_and_complete(
+        self,
+        request: dict[str, Any],
+        identity: AgentRunInputIdentity,
+        result: dict[str, Any],
+    ) -> None:
+        self._validate_result(result)
+        self.run_state.complete(request, identity, result)
 
 
 def _validate_time_bounds(request: dict[str, Any]) -> None:
