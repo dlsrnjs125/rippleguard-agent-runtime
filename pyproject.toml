@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rippleguard-agent-runtime"
+version = "0.1.0"
+description = "RippleGuard Phase 2 Loan Decision Agent Runtime"
+requires-python = ">=3.9"
+dependencies = [
+  "fastapi>=0.110,<1",
+  "uvicorn>=0.29,<1",
+  "jsonschema[format]>=4.25,<5",
+  "numpy>=1.24,<2.1",
+  "scikit-learn>=1.3,<1.6",
+  "xgboost>=2.0,<3",
+  "shap>=0.45,<0.48",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "ruff>=0.6,<1",
+  "mypy>=1.10,<2",
+]
+training = [
+  "lightgbm>=4.0,<5",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_unused_ignores = false
+ignore_missing_imports = true
