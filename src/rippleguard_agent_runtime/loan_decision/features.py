@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
-import numpy as np
-
+from rippleguard_agent_runtime.adapters.digest import sha256_digest
 from rippleguard_agent_runtime.domain.errors import AgentFailure
+from rippleguard_agent_runtime.loan_decision.preprocessing import preprocess_feature_vector
 from rippleguard_agent_runtime.ports.model import PreparedFeatures
 
 
@@ -46,8 +46,33 @@ def validate_and_prepare_features(request: dict[str, Any]) -> PreparedFeatures:
     missing = [name for name in FEATURE_ORDER if name not in features]
     if missing:
         raise AgentFailure("VALIDATION_REQUIRED", "FEATURE_REQUIRED_MISSING", "Feature payload is missing a required feature.")
+    _verify_feature_payload_digest(payload)
     values = [_feature_value(name, features[name]) for name in FEATURE_ORDER]
-    return PreparedFeatures(names=FEATURE_ORDER, values=np.asarray(values, dtype=np.float32).reshape(1, -1))
+    return PreparedFeatures(names=FEATURE_ORDER, values=preprocess_feature_vector(values))
+
+
+def feature_values(request: dict[str, Any]) -> dict[str, Any]:
+    payload = request.get("featurePayload")
+    if not isinstance(payload, dict) or not isinstance(payload.get("features"), dict):
+        raise AgentFailure("VALIDATION_REQUIRED", "FEATURE_REQUIRED_MISSING", "Feature values are required.")
+    return cast(dict[str, Any], payload["features"])
+
+
+def feature_payload_digest(payload: dict[str, Any]) -> str:
+    digest_input = {key: value for key, value in payload.items() if key != "featurePayloadDigest"}
+    return sha256_digest(digest_input)
+
+
+def _verify_feature_payload_digest(payload: dict[str, Any]) -> None:
+    expected = payload.get("featurePayloadDigest")
+    if not isinstance(expected, str):
+        raise AgentFailure("VALIDATION_REQUIRED", "FEATURE_REQUIRED_MISSING", "Feature payload digest is required.")
+    try:
+        actual = feature_payload_digest(payload)
+    except ValueError as error:
+        raise AgentFailure("VALIDATION_REQUIRED", "FEATURE_TYPE_INVALID", "Feature payload digest input is invalid.") from error
+    if actual != expected:
+        raise AgentFailure("BLOCKED", "SNAPSHOT_DIGEST_MISMATCH", "Feature payload digest mismatch.")
 
 
 def _feature_value(name: str, value: Any) -> float:

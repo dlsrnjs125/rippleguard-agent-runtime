@@ -10,6 +10,8 @@ It does not make the final loan decision, mutate Loan or Governance state, publi
 
 - Phase 2 contract validation from `rippleguard-contracts`
 - Feature Payload validation and deterministic feature ordering
+- Feature Payload digest verification
+- Versioned preprocessing shared by training and inference
 - Model Manifest validation
 - model artifact SHA-256 verification
 - XGBoost JSON model loading
@@ -64,6 +66,12 @@ make train-baseline
 
 Runtime startup does not train models or choose fallback models.
 
+The baseline artifact digest is:
+
+```text
+sha256:1780b376723b52ad04630a474c6bd2eeddab2e89caa13956e76b356595ed79df
+```
+
 ## Verification
 
 ```bash
@@ -74,6 +82,7 @@ docker build -t rippleguard-agent-runtime:phase2-local .
 ## Known Limitations
 
 - The model is a synthetic baseline for system reproducibility, not a real financial approval model.
-- LightGBM is documented as an offline comparison candidate but is not a runtime fallback.
-- Feature Payload digest canonicalization remains a contracts follow-up; runtime enforces schema and artifact provenance.
+- LightGBM is trained as an offline comparison candidate, but runtime registers only the selected XGBoost model and no fallback.
+- Request deadlines are checked before execution. Runtime does not perform internal retry orchestration; Governance owns retry policy and run scheduling.
+- `runtimeImageDigest` remains a schema-required candidate field until the deployment image digest is produced by the image build/release path.
 - Docker image expects contracts to be mounted at `/app/contracts` or supplied by deployment.

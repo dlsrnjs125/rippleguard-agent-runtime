@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from rippleguard_agent_runtime.adapters.digest import file_sha256
+
 
 def test_readiness_loads_manifest_artifact_and_model(service: object) -> None:
     ready = service.readiness()  # type: ignore[attr-defined]
@@ -15,3 +17,4 @@ def test_artifact_digest_matches_manifest() -> None:
     assert manifest["modelBinaryArtifactDigest"].startswith("sha256:")
     artifact = Path("artifacts/models") / manifest["modelBinaryArtifactReference"].removeprefix("file://")
     assert artifact.is_file()
+    assert file_sha256(str(artifact)) == manifest["modelBinaryArtifactDigest"]

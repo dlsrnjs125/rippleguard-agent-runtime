@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from rippleguard_agent_runtime.adapters.contracts import ContractValidator
+from rippleguard_agent_runtime.adapters.contracts import ContractValidationError, ContractValidator
 from rippleguard_agent_runtime.adapters.xgboost_model import XGBoostModelAdapter
 from rippleguard_agent_runtime.domain.errors import AgentFailure
-from rippleguard_agent_runtime.loan_decision.features import validate_and_prepare_features
+from rippleguard_agent_runtime.loan_decision.features import feature_values, validate_and_prepare_features
 from rippleguard_agent_runtime.loan_decision.manifest import load_manifest, verify_manifest_request
 from rippleguard_agent_runtime.loan_decision.result_builder import build_completed_result, build_failed_result
 
@@ -30,6 +30,7 @@ class LoanDecisionAgentService:
 
     def run(self, request: dict[str, Any]) -> dict[str, Any]:
         self.validator.validate("commands/loan-decision-agent-request.v1.0.0.schema.json", request)
+        started_at = _now_text()
         attempt_id = self._next_attempt(request["agentRunId"])
         try:
             _validate_time_bounds(request)
@@ -37,12 +38,28 @@ class LoanDecisionAgentService:
             threshold = self._threshold(manifest["thresholdVersion"])
             artifact = verify_manifest_request(manifest, request, self.artifact_root)
             features = validate_and_prepare_features(request)
+            raw_features = feature_values(request)
             model = XGBoostModelAdapter(artifact, manifest, threshold)
             prediction = model.predict(features)
-            explanation_ref, explanation_digest, _ = model.explain(features)
-            result = build_completed_result(request, manifest, prediction, explanation_ref, explanation_digest, attempt_id)
+            explanation_ref, explanation_digest, explanation = model.explain(features)
+            result = build_completed_result(
+                request,
+                manifest,
+                prediction,
+                explanation_ref,
+                explanation_digest,
+                explanation,
+                raw_features,
+                attempt_id,
+                started_at,
+            )
         except AgentFailure as failure:
-            result = build_failed_result(request, failure, attempt_id)
+            result = build_failed_result(request, failure, attempt_id, started_at)
+        except (json.JSONDecodeError, ContractValidationError, ValueError):
+            configuration_failure = AgentFailure(
+                "NON_RETRYABLE", "CONTRACT_VALIDATION_FAILED", "Runtime configuration is invalid."
+            )
+            result = build_failed_result(request, configuration_failure, attempt_id, started_at)
         self.validator.validate("agent-output/loan-decision-agent-result.v1.0.0.schema.json", result)
         return result
 
@@ -54,7 +71,10 @@ class LoanDecisionAgentService:
     def _threshold(self, threshold_version: str) -> float:
         if not self.thresholds_path.is_file():
             raise AgentFailure("BLOCKED", "MODEL_MANIFEST_NOT_FOUND", "Threshold configuration was not found.")
-        thresholds = json.loads(self.thresholds_path.read_text(encoding="utf-8"))
+        try:
+            thresholds = json.loads(self.thresholds_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            raise AgentFailure("NON_RETRYABLE", "CONTRACT_VALIDATION_FAILED", "Threshold configuration is invalid.") from error
         if not isinstance(thresholds, dict) or threshold_version not in thresholds:
             raise AgentFailure("VALIDATION_REQUIRED", "MODEL_VERSION_UNSUPPORTED", "Threshold version is unsupported.")
         value = thresholds[threshold_version]
@@ -77,6 +97,10 @@ def _validate_time_bounds(request: dict[str, Any]) -> None:
 
 def _parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _now_text() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _request_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:

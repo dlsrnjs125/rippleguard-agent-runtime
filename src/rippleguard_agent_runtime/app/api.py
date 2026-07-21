@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -12,6 +13,7 @@ from rippleguard_agent_runtime.loan_decision.service import LoanDecisionAgentSer
 app = FastAPI(title="RippleGuard Agent Runtime", version="0.1.0")
 
 
+@lru_cache(maxsize=1)
 def _service() -> LoanDecisionAgentService:
     settings = Settings.from_env()
     settings.validate()

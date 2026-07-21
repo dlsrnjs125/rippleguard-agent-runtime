@@ -17,12 +17,17 @@ class XGBoostModelAdapter:
         self.manifest = manifest
         self.threshold = threshold
         self.booster = xgb.Booster()
-        self.booster.load_model(str(artifact_path))
-        self.explainer = shap.TreeExplainer(self.booster)
+        try:
+            self.booster.load_model(str(artifact_path))
+            self.explainer = shap.TreeExplainer(self.booster)
+        except xgb.core.XGBoostError as error:
+            raise AgentFailure("NON_RETRYABLE", "MODEL_VERSION_UNSUPPORTED", "Model artifact could not be loaded.") from error
 
     def predict(self, features: PreparedFeatures) -> ModelPrediction:
         matrix = xgb.DMatrix(features.values, feature_names=list(features.names))
         raw = self.booster.predict(matrix)
+        if len(raw) == 0:
+            raise AgentFailure("RETRYABLE", "AGENT_RUNTIME_TEMPORARY_FAILURE", "Model returned an empty prediction.")
         score = float(raw[0])
         if not np.isfinite(score):
             raise AgentFailure("RETRYABLE", "AGENT_RUNTIME_TEMPORARY_FAILURE", "Model returned a non-finite score.")

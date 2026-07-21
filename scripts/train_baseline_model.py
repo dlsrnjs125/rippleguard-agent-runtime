@@ -7,12 +7,18 @@ import json
 import platform
 import subprocess
 import sys
+import time
 from pathlib import Path
 
-import numpy as np
-import xgboost as xgb
-from sklearn.metrics import average_precision_score, brier_score_loss, precision_recall_fscore_support, roc_auc_score
-from sklearn.model_selection import train_test_split
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+import lightgbm as lgb  # noqa: E402
+import numpy as np  # noqa: E402
+import xgboost as xgb  # noqa: E402
+from rippleguard_agent_runtime.loan_decision.preprocessing import preprocess_feature_vector  # noqa: E402
+from sklearn.metrics import average_precision_score, brier_score_loss, precision_recall_fscore_support, roc_auc_score  # noqa: E402
+from sklearn.model_selection import train_test_split  # noqa: E402
 
 FEATURE_ORDER = (
     "annualIncome",
@@ -34,6 +40,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--runtime-image-digest",
+        default="sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        help="Phase 2 manifest schema requires this field; replace with the actual deployment image digest when available.",
+    )
     args = parser.parse_args()
 
     models = args.output_dir / "models"
@@ -42,7 +53,8 @@ def main() -> int:
     for path in (models, manifests, reports):
         path.mkdir(parents=True, exist_ok=True)
 
-    x, y = synthetic_dataset(args.seed, 640)
+    raw_x, y = synthetic_dataset(args.seed, 640)
+    x = preprocess_matrix(raw_x)
     train_x, eval_x, train_y, eval_y = train_test_split(x, y, test_size=0.25, random_state=args.seed, stratify=y)
     model = xgb.XGBClassifier(
         n_estimators=24,
@@ -58,23 +70,28 @@ def main() -> int:
     )
     model.fit(train_x, train_y)
     probabilities = model.predict_proba(eval_x)[:, 1]
-    predicted = probabilities >= 0.72
-    precision, recall, f1, _ = precision_recall_fscore_support(eval_y, predicted, average="binary", zero_division=0)
+    threshold = 0.72
+    xgb_metrics = metrics(eval_y, probabilities, threshold)
+    lightgbm_metrics = train_lightgbm_candidate(train_x, eval_x, train_y, eval_y, threshold, args.seed)
     report = {
         "dataset": "synthetic-loans.v1",
         "seed": args.seed,
         "modelCandidates": [
-            {"framework": "xgboost", "status": "selected", "reason": "deterministic JSON artifact and SHAP TreeExplainer support"},
-            {"framework": "lightgbm", "status": "not_selected", "reason": "not required for runtime fallback"},
+            {
+                "framework": "xgboost",
+                "status": "selected",
+                "reason": "deterministic JSON artifact, compact artifact size, and SHAP TreeExplainer support",
+                "metrics": xgb_metrics,
+            },
+            {
+                "framework": "lightgbm",
+                "status": "not_selected",
+                "reason": "offline comparison candidate only; runtime registers one selected model and no fallback",
+                "metrics": lightgbm_metrics,
+            },
         ],
-        "metrics": {
-            "roc_auc": round(float(roc_auc_score(eval_y, probabilities)), 6),
-            "pr_auc": round(float(average_precision_score(eval_y, probabilities)), 6),
-            "precision": round(float(precision), 6),
-            "recall": round(float(recall), 6),
-            "f1": round(float(f1), 6),
-            "brier_score": round(float(brier_score_loss(eval_y, probabilities)), 6),
-        },
+        "selectedFramework": "xgboost",
+        "metrics": xgb_metrics,
         "limitations": [
             "synthetic baseline only",
             "not a real financial approval model",
@@ -95,9 +112,9 @@ def main() -> int:
         "featureSchemaVersion": "phase-2-loan-features.v1.0.0",
         "preprocessingVersion": "preprocess.v1.0.0",
         "trainingDatasetReference": "dataset://synthetic-loans/train/v1",
-        "trainingDatasetDigest": text_digest(json.dumps({"seed": args.seed, "rows": int(train_x.shape[0])}, sort_keys=True)),
+        "trainingDatasetDigest": array_digest(train_x, train_y),
         "evaluationDatasetVersion": "synthetic-loans-eval.v1.0.0",
-        "evaluationDatasetDigest": text_digest(json.dumps({"seed": args.seed, "rows": int(eval_x.shape[0])}, sort_keys=True)),
+        "evaluationDatasetDigest": array_digest(eval_x, eval_y),
         "trainingCodeCommit": _git_commit(),
         "randomSeed": args.seed,
         "thresholdVersion": "threshold.v1.0.0",
@@ -115,7 +132,7 @@ def main() -> int:
         "shapExplainerVersion": "shap.v0.47.2",
         "shapExplainerConfig": {"algorithm": "tree", "checkAdditivity": True},
         "pythonVersion": platform.python_version(),
-        "runtimeImageDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "runtimeImageDigest": args.runtime_image_digest,
         "platformArchitecture": _platform_architecture(),
         "threadCount": 1,
         "deterministicConfig": "single-threaded-xgboost-hist",
@@ -125,7 +142,7 @@ def main() -> int:
         "createdAt": "2026-07-21T00:00:00Z",
     }
     (manifests / "phase2-loan-xgboost.v1.0.0.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-    (manifests / "thresholds.v1.0.0.json").write_text(json.dumps({"threshold.v1.0.0": 0.72}, indent=2, sort_keys=True) + "\n")
+    (manifests / "thresholds.v1.0.0.json").write_text(json.dumps({"threshold.v1.0.0": threshold}, indent=2, sort_keys=True) + "\n")
     (reports / "model-selection.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({"artifact": str(artifact), "digest": artifact_digest}, sort_keys=True))
     return 0
@@ -166,6 +183,65 @@ def synthetic_dataset(seed: int, rows: int) -> tuple[np.ndarray, np.ndarray]:
     return features, labels
 
 
+def preprocess_matrix(raw_features: np.ndarray) -> np.ndarray:
+    return np.vstack([preprocess_feature_vector(row.tolist())[0] for row in raw_features]).astype(np.float32)
+
+
+def metrics(labels: np.ndarray, probabilities: np.ndarray, threshold: float) -> dict[str, float]:
+    started = time.perf_counter()
+    predicted = probabilities >= threshold
+    latency_ms = (time.perf_counter() - started) * 1000
+    precision, recall, f1, _ = precision_recall_fscore_support(labels, predicted, average="binary", zero_division=0)
+    return {
+        "roc_auc": round(float(roc_auc_score(labels, probabilities)), 6),
+        "pr_auc": round(float(average_precision_score(labels, probabilities)), 6),
+        "precision": round(float(precision), 6),
+        "recall": round(float(recall), 6),
+        "f1": round(float(f1), 6),
+        "brier_score": round(float(brier_score_loss(labels, probabilities)), 6),
+        "threshold": threshold,
+        "prediction_latency_ms": round(float(latency_ms), 6),
+    }
+
+
+def train_lightgbm_candidate(
+    train_x: np.ndarray,
+    eval_x: np.ndarray,
+    train_y: np.ndarray,
+    eval_y: np.ndarray,
+    threshold: float,
+    seed: int,
+) -> dict[str, float | str | bool]:
+    started = time.perf_counter()
+    model = lgb.LGBMClassifier(
+        n_estimators=24,
+        max_depth=3,
+        learning_rate=0.08,
+        subsample=1.0,
+        colsample_bytree=1.0,
+        objective="binary",
+        random_state=seed,
+        n_jobs=1,
+        verbosity=-1,
+    )
+    model.fit(train_x, train_y)
+    probabilities = model.predict_proba(eval_x)[:, 1]
+    result: dict[str, float | str | bool] = metrics(eval_y, probabilities, threshold)
+    result["training_latency_ms"] = round(float((time.perf_counter() - started) * 1000), 6)
+    result["shap_tree_explainer_compatible"] = True
+    return result
+
+
+def array_digest(features: np.ndarray, labels: np.ndarray) -> str:
+    digest = hashlib.sha256()
+    for array in (features, labels):
+        contiguous = np.ascontiguousarray(array)
+        digest.update(str(contiguous.dtype).encode("utf-8"))
+        digest.update(json.dumps(contiguous.shape).encode("utf-8"))
+        digest.update(contiguous.tobytes())
+    return "sha256:" + digest.hexdigest()
+
+
 def file_digest(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -179,7 +255,7 @@ def text_digest(value: str) -> str:
 
 
 def _dependency_versions() -> list[str]:
-    return [f"python=={platform.python_version()}", f"xgboost=={xgb.__version__}", "shap==0.47.2"]
+    return [f"python=={platform.python_version()}", f"xgboost=={xgb.__version__}", f"lightgbm=={lgb.__version__}", "shap==0.47.2"]
 
 
 def _git_commit() -> str:

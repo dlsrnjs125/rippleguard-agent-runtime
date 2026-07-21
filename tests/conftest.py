@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from rippleguard_agent_runtime.loan_decision.service import LoanDecisionAgentService
+from rippleguard_agent_runtime.loan_decision.features import feature_payload_digest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +35,7 @@ def valid_request() -> dict[str, Any]:
     payload["deadlineAt"] = (now + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
     manifest = json.loads((ROOT / "artifacts" / "manifests" / "phase2-loan-xgboost.v1.0.0.json").read_text())
     payload["modelArtifactDigest"] = manifest["modelBinaryArtifactDigest"]
+    payload["featurePayload"]["featurePayloadDigest"] = feature_payload_digest(payload["featurePayload"])
     return payload
 
 
