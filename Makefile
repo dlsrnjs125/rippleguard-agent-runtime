@@ -1,4 +1,4 @@
-.PHONY: install lint typecheck test contract-test integration-test reproducibility-test train-baseline build run verify docker-build docker-run-readiness
+.PHONY: install install-training lint typecheck test contract-test integration-test reproducibility-test train-baseline build run verify docker-build docker-run-readiness
 
 PYTHON ?= python3
 CONTRACTS_ROOT ?= ../rippleguard-contracts
@@ -7,6 +7,9 @@ MODEL_ARTIFACT_ROOT ?= artifacts/models
 
 install:
 	$(PYTHON) -m pip install -e ".[dev]"
+
+install-training:
+	$(PYTHON) -m pip install -e ".[dev,training]"
 
 lint:
 	$(PYTHON) -m ruff check .

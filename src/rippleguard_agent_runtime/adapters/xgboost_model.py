@@ -58,4 +58,4 @@ class XGBoostModelAdapter:
             "values": contributions[:8],
         }
         digest = sha256_digest(explanation)
-        return "shap://phase2-loan-xgboost/local-explanation", digest, contributions[:8]
+        return f"shap://sha256/{digest.removeprefix('sha256:')}", digest, contributions[:8]

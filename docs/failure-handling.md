@@ -10,6 +10,7 @@ Schema-valid requests can produce contract-valid failed results:
 - model artifact digest mismatch: `BLOCKED / MODEL_ARTIFACT_DIGEST_MISMATCH`
 - corrupted or unsupported model artifact: `NON_RETRYABLE / MODEL_VERSION_UNSUPPORTED`
 - feature payload digest mismatch: `BLOCKED / SNAPSHOT_DIGEST_MISMATCH`
+- same Agent Run with changed immutable input: `BLOCKED / AGENT_RUN_INPUT_CONFLICT`
 - unsupported feature schema: `VALIDATION_REQUIRED / FEATURE_SCHEMA_VERSION_UNSUPPORTED`
 - missing feature: `VALIDATION_REQUIRED / FEATURE_REQUIRED_MISSING`
 - unknown feature: `VALIDATION_REQUIRED / FEATURE_UNKNOWN`

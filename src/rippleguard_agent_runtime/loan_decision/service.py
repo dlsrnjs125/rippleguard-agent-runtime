@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -9,8 +10,9 @@ from rippleguard_agent_runtime.adapters.contracts import ContractValidationError
 from rippleguard_agent_runtime.adapters.xgboost_model import XGBoostModelAdapter
 from rippleguard_agent_runtime.domain.errors import AgentFailure
 from rippleguard_agent_runtime.loan_decision.features import feature_values, validate_and_prepare_features
-from rippleguard_agent_runtime.loan_decision.manifest import load_manifest, verify_manifest_request
+from rippleguard_agent_runtime.loan_decision.manifest import load_manifest, verify_manifest_request, verify_runtime_compatibility
 from rippleguard_agent_runtime.loan_decision.result_builder import build_completed_result, build_failed_result
+from rippleguard_agent_runtime.loan_decision.run_state import AgentRunStateRepository, input_identity
 
 
 class LoanDecisionAgentService:
@@ -19,10 +21,11 @@ class LoanDecisionAgentService:
         self.manifest_path = manifest_path
         self.artifact_root = artifact_root
         self.thresholds_path = manifest_path.parent / "thresholds.v1.0.0.json"
-        self._attempts: dict[str, int] = {}
+        self.run_state = AgentRunStateRepository()
 
     def readiness(self) -> dict[str, str]:
         manifest = load_manifest(self.manifest_path, self.validator)
+        verify_runtime_compatibility(manifest)
         threshold = self._threshold(manifest["thresholdVersion"])
         artifact = verify_manifest_request(manifest, _request_from_manifest(manifest), self.artifact_root)
         XGBoostModelAdapter(artifact, manifest, threshold)
@@ -31,10 +34,15 @@ class LoanDecisionAgentService:
     def run(self, request: dict[str, Any]) -> dict[str, Any]:
         self.validator.validate("commands/loan-decision-agent-request.v1.0.0.schema.json", request)
         started_at = _now_text()
-        attempt_id = self._next_attempt(request["agentRunId"])
+        attempt_id = 1
         try:
+            identity = input_identity(request)
+            attempt_id, cached_result = self.run_state.begin(request, identity)
+            if cached_result is not None:
+                return cached_result
             _validate_time_bounds(request)
             manifest = load_manifest(self.manifest_path, self.validator)
+            verify_runtime_compatibility(manifest)
             threshold = self._threshold(manifest["thresholdVersion"])
             artifact = verify_manifest_request(manifest, request, self.artifact_root)
             features = validate_and_prepare_features(request)
@@ -42,6 +50,7 @@ class LoanDecisionAgentService:
             model = XGBoostModelAdapter(artifact, manifest, threshold)
             prediction = model.predict(features)
             explanation_ref, explanation_digest, explanation = model.explain(features)
+            _validate_time_bounds(request)
             result = build_completed_result(
                 request,
                 manifest,
@@ -53,20 +62,16 @@ class LoanDecisionAgentService:
                 attempt_id,
                 started_at,
             )
+            self.run_state.complete(request, identity, result)
         except AgentFailure as failure:
             result = build_failed_result(request, failure, attempt_id, started_at)
-        except (json.JSONDecodeError, ContractValidationError, ValueError):
+        except (json.JSONDecodeError, ContractValidationError):
             configuration_failure = AgentFailure(
                 "NON_RETRYABLE", "CONTRACT_VALIDATION_FAILED", "Runtime configuration is invalid."
             )
             result = build_failed_result(request, configuration_failure, attempt_id, started_at)
         self.validator.validate("agent-output/loan-decision-agent-result.v1.0.0.schema.json", result)
         return result
-
-    def _next_attempt(self, agent_run_id: str) -> int:
-        current = self._attempts.get(agent_run_id, 0) + 1
-        self._attempts[agent_run_id] = current
-        return current
 
     def _threshold(self, threshold_version: str) -> float:
         if not self.thresholds_path.is_file():
@@ -78,7 +83,9 @@ class LoanDecisionAgentService:
         if not isinstance(thresholds, dict) or threshold_version not in thresholds:
             raise AgentFailure("VALIDATION_REQUIRED", "MODEL_VERSION_UNSUPPORTED", "Threshold version is unsupported.")
         value = thresholds[threshold_version]
-        if not isinstance(value, (int, float)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+            raise AgentFailure("NON_RETRYABLE", "CONTRACT_VALIDATION_FAILED", "Threshold value is invalid.")
+        if float(value) < 0 or float(value) > 1:
             raise AgentFailure("BLOCKED", "CONTRACT_VALIDATION_FAILED", "Threshold value is invalid.")
         return float(value)
 

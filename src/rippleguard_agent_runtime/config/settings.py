@@ -11,9 +11,6 @@ class Settings:
     contracts_root: Path
     model_manifest_path: Path
     model_artifact_root: Path
-    model_cache_size: int
-    request_timeout_seconds: int
-    max_retry_attempts: int
     log_level: str
     host: str
     port: int
@@ -25,9 +22,6 @@ class Settings:
             contracts_root=Path(_required("CONTRACTS_ROOT")).expanduser(),
             model_manifest_path=Path(_required("MODEL_MANIFEST_PATH")).expanduser(),
             model_artifact_root=Path(_required("MODEL_ARTIFACT_ROOT")).expanduser(),
-            model_cache_size=_int_env("MODEL_CACHE_SIZE", 2, minimum=1),
-            request_timeout_seconds=_int_env("REQUEST_TIMEOUT_SECONDS", 30, minimum=1),
-            max_retry_attempts=_int_env("MAX_RETRY_ATTEMPTS", 1, minimum=1),
             log_level=_required("LOG_LEVEL", "INFO"),
             host=_required("HOST", "127.0.0.1"),
             port=_int_env("PORT", 8080, minimum=1),

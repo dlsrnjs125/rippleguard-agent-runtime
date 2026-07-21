@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from rippleguard_agent_runtime.adapters.contracts import ContractValidationError
+from rippleguard_agent_runtime.loan_decision.features import feature_payload_digest
 
 
 def test_valid_request_generates_schema_valid_completed_result(
@@ -37,8 +38,6 @@ def test_decline_result_is_schema_valid_completed_result(service: object, valid_
     features["delinquencyCount"] = 3  # type: ignore[index]
     features["platformSettlementMonths"] = 3  # type: ignore[index]
     features["monthlyIncomeVolatility"] = 0.65  # type: ignore[index]
-    from rippleguard_agent_runtime.loan_decision.features import feature_payload_digest
-
     payload["featurePayloadDigest"] = feature_payload_digest(payload)  # type: ignore[index]
     result = service.run(valid_request)  # type: ignore[attr-defined]
     assert result["resultStatus"] == "COMPLETED"
@@ -64,3 +63,51 @@ def test_feature_payload_digest_mismatch_returns_failed_result(
     assert result["resultStatus"] == "FAILED"
     assert result["failure"]["reasonCode"] == "SNAPSHOT_DIGEST_MISMATCH"
     assert "proposal" not in result
+
+
+def test_duplicate_identical_request_returns_existing_result(service: object, valid_request: dict[str, object]) -> None:
+    first = service.run(valid_request)  # type: ignore[attr-defined]
+    second = service.run(valid_request)  # type: ignore[attr-defined]
+    assert second == first
+
+
+def test_same_agent_run_different_snapshot_is_blocked(service: object, valid_request: dict[str, object]) -> None:
+    first = service.run(valid_request)  # type: ignore[attr-defined]
+    assert first["resultStatus"] == "COMPLETED"
+    valid_request["snapshotReference"]["snapshotDigest"] = (  # type: ignore[index]
+        "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    )
+    result = service.run(valid_request)  # type: ignore[attr-defined]
+    assert result["resultStatus"] == "FAILED"
+    assert result["failure"]["reasonCode"] == "AGENT_RUN_INPUT_CONFLICT"
+
+
+def test_same_agent_run_different_feature_payload_is_blocked(
+    service: object, valid_request: dict[str, object]
+) -> None:
+    first = service.run(valid_request)  # type: ignore[attr-defined]
+    assert first["resultStatus"] == "COMPLETED"
+    payload = valid_request["featurePayload"]  # type: ignore[index]
+    payload["features"]["debtToIncomeRatio"] = 0.75  # type: ignore[index]
+    payload["featurePayloadDigest"] = feature_payload_digest(payload)  # type: ignore[index]
+    result = service.run(valid_request)  # type: ignore[attr-defined]
+    assert result["resultStatus"] == "FAILED"
+    assert result["failure"]["reasonCode"] == "AGENT_RUN_INPUT_CONFLICT"
+
+
+def test_same_agent_run_different_model_is_blocked(service: object, valid_request: dict[str, object]) -> None:
+    first = service.run(valid_request)  # type: ignore[attr-defined]
+    assert first["resultStatus"] == "COMPLETED"
+    valid_request["modelVersion"] = "loan-model.v9.9.9"
+    result = service.run(valid_request)  # type: ignore[attr-defined]
+    assert result["resultStatus"] == "FAILED"
+    assert result["failure"]["reasonCode"] == "AGENT_RUN_INPUT_CONFLICT"
+
+
+def test_same_agent_run_different_threshold_is_blocked(service: object, valid_request: dict[str, object]) -> None:
+    first = service.run(valid_request)  # type: ignore[attr-defined]
+    assert first["resultStatus"] == "COMPLETED"
+    valid_request["thresholdVersion"] = "threshold.v9.9.9"
+    result = service.run(valid_request)  # type: ignore[attr-defined]
+    assert result["resultStatus"] == "FAILED"
+    assert result["failure"]["reasonCode"] == "AGENT_RUN_INPUT_CONFLICT"

@@ -83,6 +83,6 @@ docker build -t rippleguard-agent-runtime:phase2-local .
 
 - The model is a synthetic baseline for system reproducibility, not a real financial approval model.
 - LightGBM is trained as an offline comparison candidate, but runtime registers only the selected XGBoost model and no fallback.
-- Request deadlines are checked before execution. Runtime does not perform internal retry orchestration; Governance owns retry policy and run scheduling.
+- Request deadlines are checked before execution and again before returning `COMPLETED`. Runtime does not perform internal retry orchestration; Governance owns retry policy and run scheduling.
 - `runtimeImageDigest` remains a schema-required candidate field until the deployment image digest is produced by the image build/release path.
 - Docker image expects contracts to be mounted at `/app/contracts` or supplied by deployment.

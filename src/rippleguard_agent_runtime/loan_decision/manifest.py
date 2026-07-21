@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+import shap
+import xgboost as xgb
+
 from rippleguard_agent_runtime.adapters.contracts import ContractValidator
 from rippleguard_agent_runtime.adapters.digest import file_sha256
 from rippleguard_agent_runtime.domain.errors import AgentFailure
@@ -49,3 +52,12 @@ def verify_manifest_request(manifest: dict[str, Any], request: dict[str, Any], a
     if manifest.get("framework") != "xgboost" or manifest.get("modelFormat") != "xgboost-json":
         raise AgentFailure("BLOCKED", "MODEL_VERSION_UNSUPPORTED", "Only the selected XGBoost JSON baseline is supported.")
     return path
+
+
+def verify_runtime_compatibility(manifest: dict[str, Any]) -> None:
+    if manifest.get("frameworkVersion") != xgb.__version__:
+        raise AgentFailure("BLOCKED", "MODEL_VERSION_UNSUPPORTED", "Installed XGBoost version does not match manifest.")
+    if manifest.get("shapExplainerVersion") != f"shap.v{shap.__version__}":
+        raise AgentFailure("BLOCKED", "MODEL_VERSION_UNSUPPORTED", "Installed SHAP version does not match manifest.")
+    if manifest.get("threadCount") != 1:
+        raise AgentFailure("BLOCKED", "MODEL_VERSION_UNSUPPORTED", "Only single-threaded runtime execution is supported.")

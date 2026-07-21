@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from rippleguard_agent_runtime.domain.errors import AgentFailure
 from rippleguard_agent_runtime.ports.model import ModelPrediction
 
 
@@ -18,14 +19,17 @@ def reason_codes(
 
 def _approval_reasons(features: dict[str, Any], explanation: list[dict[str, float | str]]) -> list[str]:
     reasons: list[str] = []
-    if float(features["debtToIncomeRatio"]) <= 0.4:
+    if float(features["debtToIncomeRatio"]) <= 0.4 and _has_positive_contribution(explanation, "debtToIncomeRatio"):
         reasons.append("LOW_DTI")
-    if bool(features["incomeDeclarationAvailable"]) and float(features["monthlyIncomeVolatility"]) <= 0.3:
+    if (
+        bool(features["incomeDeclarationAvailable"])
+        and float(features["monthlyIncomeVolatility"]) <= 0.3
+        and _has_positive_contribution(explanation, "incomeDeclarationAvailable")
+    ):
         reasons.append("STABLE_INCOME")
-    for feature_name, code in _positive_feature_codes().items():
-        if _has_positive_contribution(explanation, feature_name) and code not in reasons:
-            reasons.append(code)
-    return reasons[:2] or ["LOW_DTI"]
+    if not reasons:
+        raise AgentFailure("VALIDATION_REQUIRED", "CONTRACT_VALIDATION_FAILED", "No truthful approval reason code is available.")
+    return reasons[:2]
 
 
 def _decline_reasons(features: dict[str, Any], explanation: list[dict[str, float | str]]) -> list[str]:
@@ -38,23 +42,15 @@ def _decline_reasons(features: dict[str, Any], explanation: list[dict[str, float
             int(features["telecomPaymentDelinquencyCount"]) > 0,
         ),
         ("platformSettlementMonths", "INSUFFICIENT_HISTORY", int(features["platformSettlementMonths"]) < 12),
-        ("monthlyIncomeVolatility", "VOLATILE_SETTLEMENTS", float(features["monthlyIncomeVolatility"]) >= 0.4),
         ("platformSettlementVolatility", "VOLATILE_SETTLEMENTS", float(features["platformSettlementVolatility"]) >= 0.4),
     ]
     reasons: list[str] = []
     for feature_name, code, threshold_hit in candidates:
         if (threshold_hit or _has_adverse_contribution(explanation, feature_name)) and code not in reasons:
             reasons.append(code)
-    return reasons[:3] or ["HIGH_DTI"]
-
-
-def _positive_feature_codes() -> dict[str, str]:
-    return {
-        "debtToIncomeRatio": "LOW_DTI",
-        "incomeDeclarationAvailable": "STABLE_INCOME",
-        "monthlyIncomeVolatility": "STABLE_INCOME",
-        "platformSettlementVolatility": "STABLE_INCOME",
-    }
+    if not reasons:
+        raise AgentFailure("VALIDATION_REQUIRED", "CONTRACT_VALIDATION_FAILED", "No truthful decline reason code is available.")
+    return reasons[:3]
 
 
 def _has_positive_contribution(explanation: list[dict[str, float | str]], feature_name: str) -> bool:
