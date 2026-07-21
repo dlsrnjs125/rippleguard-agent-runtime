@@ -36,8 +36,10 @@ It enforces:
 
 - same `agentRunId` and same immutable input identity returns the existing completed Result
 - same `agentRunId` and changed immutable input returns `BLOCKED / AGENT_RUN_INPUT_CONFLICT`
-- duplicate delivery does not create a new Proposal after completion
+- duplicate delivery waits for the in-progress execution and returns the same Result
+- duplicate delivery does not create a new Proposal after the first accepted execution starts
 
 The identity includes Decision Case, Evaluation Run, request idempotency key, Snapshot digest, Feature Payload digest, Feature Schema, Preprocessing, Model, Artifact digest, and Threshold.
+Feature Payload digest and request temporal validity are checked before cache lookup.
 
 This is not a distributed or durable idempotency store. Process restart, multiple Uvicorn workers, and scale-out replicas still require Governance-owned attempt identity or a persistent Runtime repository.

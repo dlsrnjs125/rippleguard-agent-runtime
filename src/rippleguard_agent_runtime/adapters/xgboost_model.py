@@ -21,7 +21,7 @@ class XGBoostModelAdapter:
             self.booster.load_model(str(artifact_path))
             self.explainer = shap.TreeExplainer(self.booster)
         except xgb.core.XGBoostError as error:
-            raise AgentFailure("NON_RETRYABLE", "MODEL_VERSION_UNSUPPORTED", "Model artifact could not be loaded.") from error
+            raise AgentFailure("VALIDATION_REQUIRED", "MODEL_VERSION_UNSUPPORTED", "Model artifact could not be loaded.") from error
 
     def predict(self, features: PreparedFeatures) -> ModelPrediction:
         matrix = xgb.DMatrix(features.values, feature_names=list(features.names))

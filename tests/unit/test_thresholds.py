@@ -17,4 +17,5 @@ def test_threshold_value_is_validated(tmp_path: Path, value: object) -> None:
     service = LoanDecisionAgentService(tmp_path, manifest, tmp_path)
     with pytest.raises(AgentFailure) as error:
         service._threshold("threshold.v1.0.0")
+    assert error.value.classification == "VALIDATION_REQUIRED"
     assert error.value.reason_code == "CONTRACT_VALIDATION_FAILED"

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
+
 import pytest
 
 from rippleguard_agent_runtime.adapters.contracts import ContractValidationError
+from rippleguard_agent_runtime.adapters.xgboost_model import XGBoostModelAdapter
 from rippleguard_agent_runtime.loan_decision.features import feature_payload_digest
 
 
@@ -65,6 +69,21 @@ def test_feature_payload_digest_mismatch_returns_failed_result(
     assert "proposal" not in result
 
 
+def test_duplicate_with_bad_declared_feature_digest_does_not_return_cached_success(
+    service: object, valid_request: dict[str, object]
+) -> None:
+    first = service.run(valid_request)  # type: ignore[attr-defined]
+    assert first["resultStatus"] == "COMPLETED"
+    first_attempt = first["agentRun"]["attemptId"]
+    payload = valid_request["featurePayload"]  # type: ignore[index]
+    payload["featurePayloadDigest"] = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"  # type: ignore[index]
+    result = service.run(valid_request)  # type: ignore[attr-defined]
+    assert result["resultStatus"] == "FAILED"
+    assert result["agentRun"]["attemptId"] != first_attempt
+    assert result["failure"]["classification"] == "BLOCKED"
+    assert result["failure"]["reasonCode"] == "SNAPSHOT_DIGEST_MISMATCH"
+
+
 def test_duplicate_identical_request_returns_existing_result(service: object, valid_request: dict[str, object]) -> None:
     first = service.run(valid_request)  # type: ignore[attr-defined]
     second = service.run(valid_request)  # type: ignore[attr-defined]
@@ -74,11 +93,13 @@ def test_duplicate_identical_request_returns_existing_result(service: object, va
 def test_same_agent_run_different_snapshot_is_blocked(service: object, valid_request: dict[str, object]) -> None:
     first = service.run(valid_request)  # type: ignore[attr-defined]
     assert first["resultStatus"] == "COMPLETED"
+    first_attempt = first["agentRun"]["attemptId"]
     valid_request["snapshotReference"]["snapshotDigest"] = (  # type: ignore[index]
         "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
     )
     result = service.run(valid_request)  # type: ignore[attr-defined]
     assert result["resultStatus"] == "FAILED"
+    assert result["agentRun"]["attemptId"] != first_attempt
     assert result["failure"]["reasonCode"] == "AGENT_RUN_INPUT_CONFLICT"
 
 
@@ -111,3 +132,24 @@ def test_same_agent_run_different_threshold_is_blocked(service: object, valid_re
     result = service.run(valid_request)  # type: ignore[attr-defined]
     assert result["resultStatus"] == "FAILED"
     assert result["failure"]["reasonCode"] == "AGENT_RUN_INPUT_CONFLICT"
+
+
+def test_concurrent_duplicate_identical_request_single_flights(
+    monkeypatch: pytest.MonkeyPatch, service: object, valid_request: dict[str, object]
+) -> None:
+    calls = 0
+    original_predict = XGBoostModelAdapter.predict
+
+    def counted_predict(self: XGBoostModelAdapter, features: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original_predict(self, features)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(XGBoostModelAdapter, "predict", counted_predict)
+    requests = [deepcopy(valid_request) for _ in range(10)]
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        results = list(executor.map(lambda payload: service.run(payload), requests))  # type: ignore[attr-defined]
+
+    assert calls == 1
+    assert len({result["proposal"]["proposalId"] for result in results}) == 1
+    assert all(result == results[0] for result in results)

@@ -12,7 +12,7 @@ from rippleguard_agent_runtime.domain.errors import AgentFailure
 from rippleguard_agent_runtime.loan_decision.features import feature_values, validate_and_prepare_features
 from rippleguard_agent_runtime.loan_decision.manifest import load_manifest, verify_manifest_request, verify_runtime_compatibility
 from rippleguard_agent_runtime.loan_decision.result_builder import build_completed_result, build_failed_result
-from rippleguard_agent_runtime.loan_decision.run_state import AgentRunStateRepository, input_identity
+from rippleguard_agent_runtime.loan_decision.run_state import AgentRunInputConflict, AgentRunStateRepository, input_identity
 
 
 class LoanDecisionAgentService:
@@ -29,18 +29,19 @@ class LoanDecisionAgentService:
         threshold = self._threshold(manifest["thresholdVersion"])
         artifact = verify_manifest_request(manifest, _request_from_manifest(manifest), self.artifact_root)
         XGBoostModelAdapter(artifact, manifest, threshold)
-        return {"status": "ready", "modelVersion": str(manifest["modelVersion"])}
+        return {"status": "ready", "modelVersion": str(manifest["modelVersion"]), "provenanceStatus": "CANDIDATE"}
 
     def run(self, request: dict[str, Any]) -> dict[str, Any]:
         self.validator.validate("commands/loan-decision-agent-request.v1.0.0.schema.json", request)
         started_at = _now_text()
         attempt_id = 1
+        identity = None
         try:
+            _validate_time_bounds(request)
             identity = input_identity(request)
             attempt_id, cached_result = self.run_state.begin(request, identity)
             if cached_result is not None:
                 return cached_result
-            _validate_time_bounds(request)
             manifest = load_manifest(self.manifest_path, self.validator)
             verify_runtime_compatibility(manifest)
             threshold = self._threshold(manifest["thresholdVersion"])
@@ -63,13 +64,24 @@ class LoanDecisionAgentService:
                 started_at,
             )
             self.run_state.complete(request, identity, result)
-        except AgentFailure as failure:
+        except AgentRunInputConflict as failure:
+            attempt_id = failure.attempt_id
             result = build_failed_result(request, failure, attempt_id, started_at)
+        except AgentFailure as failure:
+            if identity is None:
+                attempt_id = self.run_state.allocate_attempt(request)
+            result = build_failed_result(request, failure, attempt_id, started_at)
+            if identity is not None:
+                self.run_state.complete(request, identity, result)
         except (json.JSONDecodeError, ContractValidationError):
+            if identity is None:
+                attempt_id = self.run_state.allocate_attempt(request)
             configuration_failure = AgentFailure(
-                "NON_RETRYABLE", "CONTRACT_VALIDATION_FAILED", "Runtime configuration is invalid."
+                "VALIDATION_REQUIRED", "CONTRACT_VALIDATION_FAILED", "Runtime configuration is invalid."
             )
             result = build_failed_result(request, configuration_failure, attempt_id, started_at)
+            if identity is not None:
+                self.run_state.complete(request, identity, result)
         self.validator.validate("agent-output/loan-decision-agent-result.v1.0.0.schema.json", result)
         return result
 
@@ -79,14 +91,14 @@ class LoanDecisionAgentService:
         try:
             thresholds = json.loads(self.thresholds_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as error:
-            raise AgentFailure("NON_RETRYABLE", "CONTRACT_VALIDATION_FAILED", "Threshold configuration is invalid.") from error
+            raise AgentFailure("VALIDATION_REQUIRED", "CONTRACT_VALIDATION_FAILED", "Threshold configuration is invalid.") from error
         if not isinstance(thresholds, dict) or threshold_version not in thresholds:
             raise AgentFailure("VALIDATION_REQUIRED", "MODEL_VERSION_UNSUPPORTED", "Threshold version is unsupported.")
         value = thresholds[threshold_version]
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
-            raise AgentFailure("NON_RETRYABLE", "CONTRACT_VALIDATION_FAILED", "Threshold value is invalid.")
+            raise AgentFailure("VALIDATION_REQUIRED", "CONTRACT_VALIDATION_FAILED", "Threshold value is invalid.")
         if float(value) < 0 or float(value) > 1:
-            raise AgentFailure("BLOCKED", "CONTRACT_VALIDATION_FAILED", "Threshold value is invalid.")
+            raise AgentFailure("VALIDATION_REQUIRED", "CONTRACT_VALIDATION_FAILED", "Threshold value is invalid.")
         return float(value)
 
 

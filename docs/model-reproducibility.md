@@ -23,6 +23,7 @@ The dataset digests are computed from the preprocessed feature matrix, labels, d
 The committed manifest still contains a schema-required candidate `runtimeImageDigest`. It is not deployment evidence until replaced by the actual image digest from the image build/release path.
 
 Runtime compatibility checks currently enforce the installed XGBoost version, SHAP version, and single-thread execution mode. The current contract mixes training and runtime environment fields, so Python/platform/image digest publication needs a follow-up split between model training manifest and runtime deployment manifest.
+Readiness reports `provenanceStatus: CANDIDATE` for this local baseline.
 
 Determinism tests compare semantic prediction fields: proposal outcome, score within tolerance, and SHAP explanation digest. Full Result payloads include execution metadata such as generated IDs and timestamps, so they are not byte-for-byte stable across attempts.
 

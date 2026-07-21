@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from threading import Lock
+from dataclasses import dataclass, field
+from enum import Enum
+from threading import Event, Lock
 from typing import Any
 
 from rippleguard_agent_runtime.domain.errors import AgentFailure
@@ -22,33 +23,87 @@ class AgentRunInputIdentity:
     threshold_version: str
 
 
+class RunStatus(Enum):
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+@dataclass
+class RunEntry:
+    identity: AgentRunInputIdentity
+    status: RunStatus
+    attempt_id: int
+    result: dict[str, Any] | None = None
+    done: Event = field(default_factory=Event)
+
+
+class AgentRunInputConflict(AgentFailure):
+    attempt_id: int
+
+    def __init__(self, attempt_id: int) -> None:
+        super().__init__("BLOCKED", "AGENT_RUN_INPUT_CONFLICT", "Agent run input identity changed.")
+        object.__setattr__(self, "attempt_id", attempt_id)
+
+
 class AgentRunStateRepository:
     def __init__(self) -> None:
         self._lock = Lock()
         self._attempts: dict[str, int] = {}
         self._identities: dict[str, AgentRunInputIdentity] = {}
-        self._completed_results: dict[tuple[str, AgentRunInputIdentity], dict[str, Any]] = {}
+        self._entries: dict[str, RunEntry] = {}
 
     def begin(self, request: dict[str, Any], identity: AgentRunInputIdentity) -> tuple[int, dict[str, Any] | None]:
         agent_run_id = str(request["agentRunId"])
-        with self._lock:
-            existing_identity = self._identities.get(agent_run_id)
-            if existing_identity is not None and existing_identity != identity:
-                raise AgentFailure("BLOCKED", "AGENT_RUN_INPUT_CONFLICT", "Agent run input identity changed.")
-            cached = self._completed_results.get((agent_run_id, identity))
-            if cached is not None:
-                return self._attempts.get(agent_run_id, 1), cached
-            self._identities[agent_run_id] = identity
-            attempt = self._attempts.get(agent_run_id, 0) + 1
-            self._attempts[agent_run_id] = attempt
-            return attempt, None
+        while True:
+            with self._lock:
+                entry = self._entries.get(agent_run_id)
+                if entry is None:
+                    attempt = self._attempts.get(agent_run_id, 0) + 1
+                    self._attempts[agent_run_id] = attempt
+                    self._identities[agent_run_id] = identity
+                    self._entries[agent_run_id] = RunEntry(identity=identity, status=RunStatus.IN_PROGRESS, attempt_id=attempt)
+                    return attempt, None
+                if entry.identity != identity:
+                    attempt = self._attempts.get(agent_run_id, 0) + 1
+                    self._attempts[agent_run_id] = attempt
+                    raise AgentRunInputConflict(attempt)
+                if entry.status == RunStatus.IN_PROGRESS:
+                    done = entry.done
+                elif entry.result is not None and _is_cacheable(entry.result):
+                    return entry.attempt_id, entry.result
+                else:
+                    entry.status = RunStatus.IN_PROGRESS
+                    entry.result = None
+                    entry.done.clear()
+                    return entry.attempt_id, None
+            done.wait()
 
     def complete(self, request: dict[str, Any], identity: AgentRunInputIdentity, result: dict[str, Any]) -> None:
-        if result.get("resultStatus") != "COMPLETED":
-            return
         agent_run_id = str(request["agentRunId"])
         with self._lock:
-            self._completed_results[(agent_run_id, identity)] = result
+            entry = self._entries.get(agent_run_id)
+            if entry is None or entry.identity != identity:
+                return
+            entry.result = result
+            entry.status = RunStatus.COMPLETED if result.get("resultStatus") == "COMPLETED" else RunStatus.FAILED
+            entry.done.set()
+
+    def allocate_attempt(self, request: dict[str, Any]) -> int:
+        agent_run_id = str(request["agentRunId"])
+        with self._lock:
+            attempt = self._attempts.get(agent_run_id, 0) + 1
+            self._attempts[agent_run_id] = attempt
+            return attempt
+
+
+def _is_cacheable(result: dict[str, Any]) -> bool:
+    if result.get("resultStatus") == "COMPLETED":
+        return True
+    failure = result.get("failure")
+    if not isinstance(failure, dict):
+        return False
+    return failure.get("classification") in {"BLOCKED", "NON_RETRYABLE"}
 
 
 def input_identity(request: dict[str, Any]) -> AgentRunInputIdentity:
@@ -59,6 +114,8 @@ def input_identity(request: dict[str, Any]) -> AgentRunInputIdentity:
         actual_feature_digest = feature_payload_digest(feature_payload)
     except ValueError as error:
         raise AgentFailure("VALIDATION_REQUIRED", "FEATURE_TYPE_INVALID", "Feature payload digest input is invalid.") from error
+    if feature_payload.get("featurePayloadDigest") != actual_feature_digest:
+        raise AgentFailure("BLOCKED", "SNAPSHOT_DIGEST_MISMATCH", "Feature payload digest mismatch.")
     return AgentRunInputIdentity(
         decision_case_id=str(request["decisionCaseId"]),
         evaluation_run_id=str(request["evaluationRunId"]),

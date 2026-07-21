@@ -50,14 +50,14 @@ def verify_manifest_request(manifest: dict[str, Any], request: dict[str, Any], a
     if actual != manifest.get("modelBinaryArtifactDigest"):
         raise AgentFailure("BLOCKED", "MODEL_ARTIFACT_DIGEST_MISMATCH", "Model artifact digest mismatch.")
     if manifest.get("framework") != "xgboost" or manifest.get("modelFormat") != "xgboost-json":
-        raise AgentFailure("BLOCKED", "MODEL_VERSION_UNSUPPORTED", "Only the selected XGBoost JSON baseline is supported.")
+        raise AgentFailure("VALIDATION_REQUIRED", "MODEL_VERSION_UNSUPPORTED", "Only the selected XGBoost JSON baseline is supported.")
     return path
 
 
 def verify_runtime_compatibility(manifest: dict[str, Any]) -> None:
     if manifest.get("frameworkVersion") != xgb.__version__:
-        raise AgentFailure("BLOCKED", "MODEL_VERSION_UNSUPPORTED", "Installed XGBoost version does not match manifest.")
+        raise AgentFailure("VALIDATION_REQUIRED", "MODEL_VERSION_UNSUPPORTED", "Installed XGBoost version does not match manifest.")
     if manifest.get("shapExplainerVersion") != f"shap.v{shap.__version__}":
-        raise AgentFailure("BLOCKED", "MODEL_VERSION_UNSUPPORTED", "Installed SHAP version does not match manifest.")
+        raise AgentFailure("VALIDATION_REQUIRED", "MODEL_VERSION_UNSUPPORTED", "Installed SHAP version does not match manifest.")
     if manifest.get("threadCount") != 1:
-        raise AgentFailure("BLOCKED", "MODEL_VERSION_UNSUPPORTED", "Only single-threaded runtime execution is supported.")
+        raise AgentFailure("VALIDATION_REQUIRED", "MODEL_VERSION_UNSUPPORTED", "Only single-threaded runtime execution is supported.")
