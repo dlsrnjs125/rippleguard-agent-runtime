@@ -1,0 +1,29 @@
+{
+  "dataset": "synthetic-loans.v1",
+  "limitations": [
+    "synthetic baseline only",
+    "not a real financial approval model",
+    "not a fairness or regulatory suitability claim"
+  ],
+  "metrics": {
+    "brier_score": 0.225351,
+    "f1": 0.591716,
+    "pr_auc": 0.760304,
+    "precision": 0.746269,
+    "recall": 0.490196,
+    "roc_auc": 0.644439
+  },
+  "modelCandidates": [
+    {
+      "framework": "xgboost",
+      "reason": "deterministic JSON artifact and SHAP TreeExplainer support",
+      "status": "selected"
+    },
+    {
+      "framework": "lightgbm",
+      "reason": "not required for runtime fallback",
+      "status": "not_selected"
+    }
+  ],
+  "seed": 42
+}

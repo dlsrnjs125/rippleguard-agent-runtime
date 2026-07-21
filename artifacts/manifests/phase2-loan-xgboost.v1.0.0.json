@@ -1,0 +1,42 @@
+{
+  "artifactDigestAlgorithm": "sha256",
+  "createdAt": "2026-07-21T00:00:00Z",
+  "dependencyLockDigest": "sha256:8f0d84ff81aef60d790b56d719db652e1ce854c64ce51cf36cde271ff891e81a",
+  "deterministicConfig": "single-threaded-xgboost-hist",
+  "evaluationDatasetDigest": "sha256:68652e221da7b8ce60d822bef994a3545577931b963ce7ae9dab7d48aa65e1c0",
+  "evaluationDatasetVersion": "synthetic-loans-eval.v1.0.0",
+  "featureSchemaVersion": "phase-2-loan-features.v1.0.0",
+  "framework": "xgboost",
+  "frameworkVersion": "2.1.4",
+  "license": "Apache-2.0",
+  "modelBinaryArtifactDigest": "sha256:7b80602e8eeb57fc70c91fec9913db3a1736768fc775ac2f322825ca91de07df",
+  "modelBinaryArtifactReference": "file://phase2-loan-xgboost.v1.0.0.json",
+  "modelFormat": "xgboost-json",
+  "modelName": "phase2-loan-xgboost",
+  "modelType": "TABULAR",
+  "modelVersion": "loan-model.v1.0.0",
+  "platformArchitecture": "darwin/arm64",
+  "preprocessingVersion": "preprocess.v1.0.0",
+  "pythonVersion": "3.9.6",
+  "randomSeed": 42,
+  "runtimeImageDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "schemaVersion": "1.0.0",
+  "scoreSemantics": "higher score means higher repayment likelihood",
+  "selectedMetrics": {
+    "calibration": "BRIER_SCORE",
+    "guardrail": "RECALL_AT_FIXED_APPROVAL_RISK_THRESHOLD",
+    "primary": "PR_AUC"
+  },
+  "shapExplainerConfig": {
+    "algorithm": "tree",
+    "checkAdditivity": true
+  },
+  "shapExplainerVersion": "shap.v0.47.2",
+  "source": "https://github.com/dlsrnjs125/rippleguard-agent-runtime",
+  "targetDefinition": "repayment within agreed term",
+  "threadCount": 1,
+  "thresholdVersion": "threshold.v1.0.0",
+  "trainingCodeCommit": "2207e19e27c05a7731e9feef286ec5c58644653e",
+  "trainingDatasetDigest": "sha256:8eb1f9bd783f342b41ca0182dfe3e41227cf0b6618835d4602f009aa4102862a",
+  "trainingDatasetReference": "dataset://synthetic-loans/train/v1"
+}

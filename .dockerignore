@@ -1,0 +1,13 @@
+.git
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.venv
+__pycache__
+*.pyc
+.env
+.env.*
+artifacts/tmp
+artifacts/cache
+tests
+docs

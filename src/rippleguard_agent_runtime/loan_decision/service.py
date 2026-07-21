@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from rippleguard_agent_runtime.adapters.contracts import ContractValidator
+from rippleguard_agent_runtime.adapters.xgboost_model import XGBoostModelAdapter
+from rippleguard_agent_runtime.domain.errors import AgentFailure
+from rippleguard_agent_runtime.loan_decision.features import validate_and_prepare_features
+from rippleguard_agent_runtime.loan_decision.manifest import load_manifest, verify_manifest_request
+from rippleguard_agent_runtime.loan_decision.result_builder import build_completed_result, build_failed_result
+
+
+class LoanDecisionAgentService:
+    def __init__(self, contracts_root: Path, manifest_path: Path, artifact_root: Path) -> None:
+        self.validator = ContractValidator(contracts_root)
+        self.manifest_path = manifest_path
+        self.artifact_root = artifact_root
+        self.thresholds_path = manifest_path.parent / "thresholds.v1.0.0.json"
+        self._attempts: dict[str, int] = {}
+
+    def readiness(self) -> dict[str, str]:
+        manifest = load_manifest(self.manifest_path, self.validator)
+        threshold = self._threshold(manifest["thresholdVersion"])
+        artifact = verify_manifest_request(manifest, _request_from_manifest(manifest), self.artifact_root)
+        XGBoostModelAdapter(artifact, manifest, threshold)
+        return {"status": "ready", "modelVersion": str(manifest["modelVersion"])}
+
+    def run(self, request: dict[str, Any]) -> dict[str, Any]:
+        self.validator.validate("commands/loan-decision-agent-request.v1.0.0.schema.json", request)
+        attempt_id = self._next_attempt(request["agentRunId"])
+        try:
+            _validate_time_bounds(request)
+            manifest = load_manifest(self.manifest_path, self.validator)
+            threshold = self._threshold(manifest["thresholdVersion"])
+            artifact = verify_manifest_request(manifest, request, self.artifact_root)
+            features = validate_and_prepare_features(request)
+            model = XGBoostModelAdapter(artifact, manifest, threshold)
+            prediction = model.predict(features)
+            explanation_ref, explanation_digest, _ = model.explain(features)
+            result = build_completed_result(request, manifest, prediction, explanation_ref, explanation_digest, attempt_id)
+        except AgentFailure as failure:
+            result = build_failed_result(request, failure, attempt_id)
+        self.validator.validate("agent-output/loan-decision-agent-result.v1.0.0.schema.json", result)
+        return result
+
+    def _next_attempt(self, agent_run_id: str) -> int:
+        current = self._attempts.get(agent_run_id, 0) + 1
+        self._attempts[agent_run_id] = current
+        return current
+
+    def _threshold(self, threshold_version: str) -> float:
+        if not self.thresholds_path.is_file():
+            raise AgentFailure("BLOCKED", "MODEL_MANIFEST_NOT_FOUND", "Threshold configuration was not found.")
+        thresholds = json.loads(self.thresholds_path.read_text(encoding="utf-8"))
+        if not isinstance(thresholds, dict) or threshold_version not in thresholds:
+            raise AgentFailure("VALIDATION_REQUIRED", "MODEL_VERSION_UNSUPPORTED", "Threshold version is unsupported.")
+        value = thresholds[threshold_version]
+        if not isinstance(value, (int, float)):
+            raise AgentFailure("BLOCKED", "CONTRACT_VALIDATION_FAILED", "Threshold value is invalid.")
+        return float(value)
+
+
+def _validate_time_bounds(request: dict[str, Any]) -> None:
+    snapshot_time = _parse_time(request["snapshotReference"]["snapshotCreatedAt"])
+    requested = _parse_time(request["requestedAt"])
+    deadline = _parse_time(request["deadlineAt"])
+    if deadline <= requested:
+        raise AgentFailure("RETRYABLE", "AGENT_TIMEOUT", "Request deadline is not after requestedAt.")
+    if snapshot_time > requested:
+        raise AgentFailure("BLOCKED", "SNAPSHOT_DIGEST_MISMATCH", "Snapshot was created after request time.")
+    if deadline <= datetime.now(deadline.tzinfo):
+        raise AgentFailure("RETRYABLE", "AGENT_TIMEOUT", "Request deadline has already passed.")
+
+
+def _parse_time(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _request_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "modelVersion": manifest["modelVersion"],
+        "featureSchemaVersion": manifest["featureSchemaVersion"],
+        "preprocessingVersion": manifest["preprocessingVersion"],
+        "thresholdVersion": manifest["thresholdVersion"],
+        "modelArtifactDigest": manifest["modelBinaryArtifactDigest"],
+    }
