@@ -30,7 +30,7 @@ Set `CONTRACTS_ROOT` to a local checkout of `rippleguard-contracts`.
 The implementation was built against contracts commit:
 
 ```text
-f4012e8 feat: define phase 2 loan decision contracts (#4)
+751f43c88c1bef860c76398eed24b3d60225b931 fix: guard phase 2 event causation contracts (#5)
 ```
 
 ## Local Setup
@@ -76,7 +76,8 @@ sha256:1780b376723b52ad04630a474c6bd2eeddab2e89caa13956e76b356595ed79df
 
 ```bash
 make verify
-docker build -t rippleguard-agent-runtime:phase2-local .
+make build-image
+make verify-image-provenance
 ```
 
 ## Known Limitations
@@ -84,5 +85,5 @@ docker build -t rippleguard-agent-runtime:phase2-local .
 - The model is a synthetic baseline for system reproducibility, not a real financial approval model.
 - LightGBM is trained as an offline comparison candidate, but runtime registers only the selected XGBoost model and no fallback.
 - Request deadlines are checked before execution and again before returning `COMPLETED`. Runtime does not perform internal retry orchestration; Governance owns retry policy and run scheduling.
-- `runtimeImageDigest` remains a schema-required candidate field until the deployment image digest is produced by the image build/release path.
+- `runtimeImageDigest` remains a schema-required candidate field until the deployment image digest is produced by the image build/release path. The committed `sha256:ffff...` value is a placeholder and must not be used as release evidence.
 - Docker image expects contracts to be mounted at `/app/contracts` or supplied by deployment.
