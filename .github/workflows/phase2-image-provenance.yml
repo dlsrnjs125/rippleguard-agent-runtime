@@ -1,0 +1,49 @@
+name: Phase 2 Image Provenance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - fix/**
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      CONTRACTS_ROOT: ../rippleguard-contracts
+      MODEL_MANIFEST_PATH: artifacts/manifests/phase2-loan-xgboost.v1.0.0.json
+      MODEL_ARTIFACT_ROOT: artifacts/models
+
+    steps:
+      - name: Checkout runtime
+        uses: actions/checkout@v4
+        with:
+          path: rippleguard-agent-runtime
+
+      - name: Checkout contracts baseline
+        uses: actions/checkout@v4
+        with:
+          repository: dlsrnjs125/rippleguard-contracts
+          ref: 751f43c88c1bef860c76398eed24b3d60225b931
+          path: rippleguard-contracts
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: rippleguard-agent-runtime/pyproject.toml
+
+      - name: Install dependencies
+        working-directory: rippleguard-agent-runtime
+        run: python -m pip install -e ".[dev]"
+
+      - name: Verify runtime
+        working-directory: rippleguard-agent-runtime
+        run: make verify
+
+      - name: Build and verify image provenance
+        working-directory: rippleguard-agent-runtime
+        run: make build-image && make verify-image-provenance

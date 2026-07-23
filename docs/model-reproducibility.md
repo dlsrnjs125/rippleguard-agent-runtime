@@ -20,7 +20,14 @@ Training and inference both use `preprocess.v1.0.0`:
 The artifact digest is recorded in `artifacts/manifests/phase2-loan-xgboost.v1.0.0.json` and rechecked before every inference.
 The dataset digests are computed from the preprocessed feature matrix, labels, dtype, and shape.
 
-The committed manifest still contains a schema-required candidate `runtimeImageDigest`. It is not deployment evidence until replaced by the actual image digest from the image build/release path.
+The committed manifest still contains a schema-required candidate `runtimeImageDigest`. It is not deployment evidence until replaced by the actual image digest from the image build/release path. The placeholder value must not be treated as a runtime image digest, and the source commit must not be substituted for the image digest.
+
+Release ownership is intentionally split:
+
+- Model Manifest: model artifact provenance, training provenance, and runtime dependency constraints
+- Infra Release Manifest: exact runtime image digest, model artifact digest, and model manifest digest
+
+Follow-up for `rippleguard-contracts`: redefine `runtimeImageDigest` ownership/lifecycle so the model manifest does not create an image digest rebuild loop.
 
 Runtime compatibility checks currently enforce the installed XGBoost version, SHAP version, and single-thread execution mode. The current contract mixes training and runtime environment fields, so Python/platform/image digest publication needs a follow-up split between model training manifest and runtime deployment manifest.
 Readiness reports `provenanceStatus: CANDIDATE` for this local baseline.

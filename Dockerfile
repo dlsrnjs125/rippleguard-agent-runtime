@@ -1,5 +1,11 @@
 FROM python:3.12.8-slim AS runtime
 
+ARG OCI_REVISION
+ARG OCI_SOURCE
+
+LABEL org.opencontainers.image.revision="${OCI_REVISION}" \
+      org.opencontainers.image.source="${OCI_SOURCE}"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     APP_ENV=container \
@@ -10,6 +16,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=8080
 
 WORKDIR /app
+
+RUN test -n "${OCI_REVISION}" \
+    && test "${OCI_REVISION}" != "unknown" \
+    && test -n "${OCI_SOURCE}" \
+    && test "${OCI_SOURCE}" != "unknown"
 
 RUN useradd --create-home --uid 10001 appuser
 
