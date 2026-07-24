@@ -9,7 +9,6 @@ from rippleguard_agent_runtime.adapters.contracts import ContractValidationError
 from rippleguard_agent_runtime.config.settings import Settings
 from rippleguard_agent_runtime.loan_decision.service import LoanDecisionAgentService
 
-
 app = FastAPI(title="RippleGuard Agent Runtime", version="0.1.0")
 
 
@@ -29,7 +28,7 @@ def health() -> dict[str, str]:
 def ready() -> dict[str, str]:
     try:
         return _service().readiness()
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         raise HTTPException(status_code=503, detail="runtime is not ready") from error
 
 

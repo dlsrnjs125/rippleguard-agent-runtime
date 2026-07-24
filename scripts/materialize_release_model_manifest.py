@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import re
@@ -13,8 +14,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from rippleguard_agent_runtime.adapters.contracts import ContractValidationError, ContractValidator  # noqa: E402
-from rippleguard_agent_runtime.adapters.digest import file_sha256  # noqa: E402
+contracts_module = importlib.import_module("rippleguard_agent_runtime.adapters.contracts")
+ContractValidationError = contracts_module.ContractValidationError
+ContractValidator = contracts_module.ContractValidator
+file_sha256 = importlib.import_module("rippleguard_agent_runtime.adapters.digest").file_sha256
 
 RUNTIME_IMAGE_TOKEN = "${RUNTIME_IMAGE_DIGEST}"
 SHA256_RE = re.compile(r"^sha256:[a-f0-9]{64}$")

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import platform
 import subprocess
@@ -10,15 +11,22 @@ import sys
 import time
 from pathlib import Path
 
+import lightgbm as lgb
+import numpy as np
+import xgboost as xgb
+from sklearn.metrics import (
+    average_precision_score,
+    brier_score_loss,
+    precision_recall_fscore_support,
+    roc_auc_score,
+)
+from sklearn.model_selection import train_test_split
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-import lightgbm as lgb  # noqa: E402
-import numpy as np  # noqa: E402
-import xgboost as xgb  # noqa: E402
-from rippleguard_agent_runtime.loan_decision.preprocessing import preprocess_feature_vector  # noqa: E402
-from sklearn.metrics import average_precision_score, brier_score_loss, precision_recall_fscore_support, roc_auc_score  # noqa: E402
-from sklearn.model_selection import train_test_split  # noqa: E402
+preprocessing_module = importlib.import_module("rippleguard_agent_runtime.loan_decision.preprocessing")
+preprocess_feature_vector = preprocessing_module.preprocess_feature_vector
 
 FEATURE_ORDER = (
     "annualIncome",

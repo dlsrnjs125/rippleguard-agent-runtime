@@ -41,7 +41,7 @@ class XGBoostModelAdapter:
     def explain(self, features: PreparedFeatures) -> tuple[str, str, list[dict[str, float | str]]]:
         try:
             values = self.explainer.shap_values(features.values)
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             raise AgentFailure("VALIDATION_REQUIRED", "SHAP_CALCULATION_FAILED", "SHAP explanation failed.") from error
         row = np.asarray(values)[0]
         contributions: list[dict[str, float | str]] = [

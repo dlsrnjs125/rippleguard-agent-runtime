@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import importlib
 import json
 import sys
 from pathlib import Path
@@ -8,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from rippleguard_agent_runtime.adapters.digest import file_sha256  # noqa: E402
+file_sha256 = importlib.import_module("rippleguard_agent_runtime.adapters.digest").file_sha256
 
 
 def main() -> int:

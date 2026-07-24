@@ -9,7 +9,6 @@ from rippleguard_agent_runtime.adapters.contracts import ContractValidationError
 from rippleguard_agent_runtime.adapters.digest import file_sha256
 from rippleguard_agent_runtime.loan_decision.service import LoanDecisionAgentService
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 

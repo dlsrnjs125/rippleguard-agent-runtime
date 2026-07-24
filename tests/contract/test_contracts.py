@@ -7,12 +7,12 @@ from time import sleep
 
 import pytest
 
+import rippleguard_agent_runtime.loan_decision.service as service_module
 from rippleguard_agent_runtime.adapters.contracts import ContractValidationError
 from rippleguard_agent_runtime.adapters.xgboost_model import XGBoostModelAdapter
 from rippleguard_agent_runtime.domain.errors import AgentFailure
-from rippleguard_agent_runtime.loan_decision.features import feature_payload_digest
-import rippleguard_agent_runtime.loan_decision.service as service_module
 from rippleguard_agent_runtime.loan_decision import result_builder
+from rippleguard_agent_runtime.loan_decision.features import feature_payload_digest
 from rippleguard_agent_runtime.loan_decision.service import LoanDecisionAgentService
 
 

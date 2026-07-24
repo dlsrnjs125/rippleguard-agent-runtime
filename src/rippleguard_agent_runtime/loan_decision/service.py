@@ -10,7 +10,11 @@ from rippleguard_agent_runtime.adapters.contracts import ContractValidator
 from rippleguard_agent_runtime.adapters.xgboost_model import XGBoostModelAdapter
 from rippleguard_agent_runtime.domain.errors import AgentFailure
 from rippleguard_agent_runtime.loan_decision.features import feature_values, validate_and_prepare_features
-from rippleguard_agent_runtime.loan_decision.manifest import load_manifest, verify_manifest_request, verify_runtime_compatibility
+from rippleguard_agent_runtime.loan_decision.manifest import (
+    load_manifest,
+    verify_manifest_request,
+    verify_runtime_compatibility,
+)
 from rippleguard_agent_runtime.loan_decision.result_builder import build_completed_result, build_failed_result
 from rippleguard_agent_runtime.loan_decision.run_state import (
     AgentRunInputConflict,

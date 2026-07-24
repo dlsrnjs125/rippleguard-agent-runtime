@@ -8,9 +8,8 @@ from typing import Any
 
 import pytest
 
-from rippleguard_agent_runtime.loan_decision.service import LoanDecisionAgentService
 from rippleguard_agent_runtime.loan_decision.features import feature_payload_digest
-
+from rippleguard_agent_runtime.loan_decision.service import LoanDecisionAgentService
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS = ROOT.parent / "rippleguard-contracts"

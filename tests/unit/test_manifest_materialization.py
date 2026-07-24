@@ -8,7 +8,6 @@ import pytest
 from rippleguard_agent_runtime.adapters.contracts import ContractValidator
 from scripts.materialize_release_model_manifest import MaterializationError, materialize_manifest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACTS = ROOT.parent / "rippleguard-contracts"
 TEMPLATE = ROOT / "artifacts" / "templates" / "phase2-loan-xgboost.v1.0.0.template.json"
