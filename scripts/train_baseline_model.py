@@ -40,17 +40,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument(
-        "--runtime-image-digest",
-        default="sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-        help="Phase 2 manifest schema requires this field; replace with the actual deployment image digest when available.",
-    )
     args = parser.parse_args()
 
     models = args.output_dir / "models"
     manifests = args.output_dir / "manifests"
+    templates = args.output_dir / "templates"
     reports = args.output_dir / "reports"
-    for path in (models, manifests, reports):
+    for path in (models, manifests, templates, reports):
         path.mkdir(parents=True, exist_ok=True)
 
     raw_x, y = synthetic_dataset(args.seed, 640)
@@ -132,7 +128,7 @@ def main() -> int:
         "shapExplainerVersion": "shap.v0.47.2",
         "shapExplainerConfig": {"algorithm": "tree", "checkAdditivity": True},
         "pythonVersion": platform.python_version(),
-        "runtimeImageDigest": args.runtime_image_digest,
+        "runtimeImageDigest": "${RUNTIME_IMAGE_DIGEST}",
         "platformArchitecture": _platform_architecture(),
         "threadCount": 1,
         "deterministicConfig": "single-threaded-xgboost-hist",
@@ -141,7 +137,9 @@ def main() -> int:
         "source": "https://github.com/dlsrnjs125/rippleguard-agent-runtime",
         "createdAt": "2026-07-21T00:00:00Z",
     }
-    (manifests / "phase2-loan-xgboost.v1.0.0.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    (templates / "phase2-loan-xgboost.v1.0.0.template.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    )
     (manifests / "thresholds.v1.0.0.json").write_text(json.dumps({"threshold.v1.0.0": threshold}, indent=2, sort_keys=True) + "\n")
     (reports / "model-selection.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({"artifact": str(artifact), "digest": artifact_digest}, sort_keys=True))

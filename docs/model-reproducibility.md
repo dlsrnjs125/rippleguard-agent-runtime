@@ -17,20 +17,20 @@ Training and inference both use `preprocess.v1.0.0`:
 - bounded scaling for ratios, counts, and month features
 - boolean conversion to `0/1`
 
-The artifact digest is recorded in `artifacts/manifests/phase2-loan-xgboost.v1.0.0.json` and rechecked before every inference.
+The artifact digest is recorded in `artifacts/templates/phase2-loan-xgboost.v1.0.0.template.json` and rechecked against the Infra-materialized published manifest before every inference.
 The dataset digests are computed from the preprocessed feature matrix, labels, dtype, and shape.
 
-The committed manifest still contains a schema-required candidate `runtimeImageDigest`. It is not deployment evidence until replaced by the actual image digest from the image build/release path. The placeholder value must not be treated as a runtime image digest, and the source commit must not be substituted for the image digest.
+The committed manifest is a template and contains `${RUNTIME_IMAGE_DIGEST}`. It is not deployment evidence. `scripts/materialize_release_model_manifest.py` injects the actual image digest after image build, verifies the model artifact digest, validates the published manifest against `rippleguard-contracts`, and writes the output atomically. The placeholder token and source commit must not be substituted for the image digest.
 
 Release ownership is intentionally split:
 
-- Model Manifest: model artifact provenance, training provenance, and runtime dependency constraints
+- Template Manifest: model artifact provenance, training provenance, and runtime dependency constraints
 - Infra Release Manifest: exact runtime image digest, model artifact digest, and model manifest digest
 
-Follow-up for `rippleguard-contracts`: redefine `runtimeImageDigest` ownership/lifecycle so the model manifest does not create an image digest rebuild loop.
+Published Model Manifest: Infra-materialized manifest with exact runtime image digest.
 
 Runtime compatibility checks currently enforce the installed XGBoost version, SHAP version, and single-thread execution mode. The current contract mixes training and runtime environment fields, so Python/platform/image digest publication needs a follow-up split between model training manifest and runtime deployment manifest.
-Readiness reports `provenanceStatus: CANDIDATE` for this local baseline.
+Readiness reports `provenanceStatus: MATERIALIZED` only after a published manifest has been loaded and verified.
 
 Determinism tests compare semantic prediction fields: proposal outcome, score within tolerance, and SHAP explanation digest. Full Result payloads include execution metadata such as generated IDs and timestamps, so they are not byte-for-byte stable across attempts.
 

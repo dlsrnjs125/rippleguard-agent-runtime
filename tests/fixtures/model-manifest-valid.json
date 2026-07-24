@@ -19,7 +19,7 @@
   "preprocessingVersion": "preprocess.v1.0.0",
   "pythonVersion": "3.9.6",
   "randomSeed": 42,
-  "runtimeImageDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "runtimeImageDigest": "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
   "schemaVersion": "1.0.0",
   "scoreSemantics": "higher score means higher repayment likelihood",
   "selectedMetrics": {

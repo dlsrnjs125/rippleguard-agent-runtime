@@ -34,7 +34,7 @@ class LoanDecisionAgentService:
         threshold = self._threshold(manifest["thresholdVersion"])
         artifact = verify_manifest_request(manifest, _request_from_manifest(manifest), self.artifact_root)
         XGBoostModelAdapter(artifact, manifest, threshold)
-        return {"status": "ready", "modelVersion": str(manifest["modelVersion"]), "provenanceStatus": "CANDIDATE"}
+        return {"status": "ready", "modelVersion": str(manifest["modelVersion"]), "provenanceStatus": "MATERIALIZED"}
 
     def run(self, request: dict[str, Any]) -> dict[str, Any]:
         self.validator.validate("commands/loan-decision-agent-request.v1.0.0.schema.json", request)

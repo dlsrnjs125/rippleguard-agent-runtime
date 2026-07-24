@@ -2,7 +2,7 @@
 
 PYTHON ?= python3
 CONTRACTS_ROOT ?= ../rippleguard-contracts
-MODEL_MANIFEST_PATH ?= artifacts/manifests/phase2-loan-xgboost.v1.0.0.json
+MODEL_MANIFEST_PATH ?= tests/fixtures/model-manifest-valid.json
 MODEL_ARTIFACT_ROOT ?= artifacts/models
 OCI_SOURCE ?= https://github.com/dlsrnjs125/rippleguard-agent-runtime
 OCI_REVISION := $(shell git rev-parse HEAD)
@@ -72,4 +72,8 @@ release-image-check: verify build-image verify-image-provenance
 docker-build: build-image
 
 docker-run-readiness:
-	docker run --rm -v $(abspath $(CONTRACTS_ROOT)):/app/contracts:ro "$(IMAGE_TAG)" python -m rippleguard_agent_runtime.app.readiness
+	docker run --rm \
+		-v $(abspath $(CONTRACTS_ROOT)):/app/contracts:ro \
+		-v $(abspath $(MODEL_MANIFEST_PATH)):/app/release/model-manifest.json:ro \
+		-e MODEL_MANIFEST_PATH=/app/release/model-manifest.json \
+		"$(IMAGE_TAG)" python -m rippleguard_agent_runtime.app.readiness
