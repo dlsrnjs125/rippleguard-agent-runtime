@@ -72,12 +72,13 @@ The committed source manifest is a template:
 artifacts/templates/phase2-loan-xgboost.v1.0.0.template.json
 ```
 
-It contains `${RUNTIME_IMAGE_DIGEST}` and must not be used as release evidence or passed as `MODEL_MANIFEST_PATH`. Infra materializes the published manifest after the image build:
+It is validated by the Contracts template schema and must not be used as release evidence or passed as `MODEL_MANIFEST_PATH`. Infra materializes the published manifest after the image build by injecting the immutable runtime image digest and built Linux image platform:
 
 ```bash
 python3 scripts/materialize_release_model_manifest.py \
   --template artifacts/templates/phase2-loan-xgboost.v1.0.0.template.json \
   --runtime-image-digest sha256:<64 lowercase hex chars> \
+  --platform-architecture linux/arm64 \
   --output /path/to/materialized/phase2-loan-xgboost.v1.0.0.json
 ```
 

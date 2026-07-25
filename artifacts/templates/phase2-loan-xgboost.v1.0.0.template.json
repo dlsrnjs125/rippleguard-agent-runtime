@@ -9,6 +9,7 @@
   "framework": "xgboost",
   "frameworkVersion": "2.1.4",
   "license": "Apache-2.0",
+  "manifestPublicationState": "TEMPLATE",
   "modelBinaryArtifactDigest": "sha256:1780b376723b52ad04630a474c6bd2eeddab2e89caa13956e76b356595ed79df",
   "modelBinaryArtifactReference": "file://phase2-loan-xgboost.v1.0.0.json",
   "modelFormat": "xgboost-json",
@@ -19,7 +20,6 @@
   "preprocessingVersion": "preprocess.v1.0.0",
   "pythonVersion": "3.9.6",
   "randomSeed": 42,
-  "runtimeImageDigest": "${RUNTIME_IMAGE_DIGEST}",
   "schemaVersion": "1.0.0",
   "scoreSemantics": "higher score means higher repayment likelihood",
   "selectedMetrics": {

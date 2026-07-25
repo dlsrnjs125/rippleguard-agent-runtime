@@ -136,7 +136,7 @@ def main() -> int:
         "shapExplainerVersion": "shap.v0.47.2",
         "shapExplainerConfig": {"algorithm": "tree", "checkAdditivity": True},
         "pythonVersion": platform.python_version(),
-        "runtimeImageDigest": "${RUNTIME_IMAGE_DIGEST}",
+        "manifestPublicationState": "TEMPLATE",
         "platformArchitecture": _platform_architecture(),
         "threadCount": 1,
         "deterministicConfig": "single-threaded-xgboost-hist",

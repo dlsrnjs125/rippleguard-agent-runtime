@@ -15,7 +15,7 @@
   "modelName": "phase2-loan-xgboost",
   "modelType": "TABULAR",
   "modelVersion": "loan-model.v1.0.0",
-  "platformArchitecture": "darwin/arm64",
+  "platformArchitecture": "linux/arm64",
   "preprocessingVersion": "preprocess.v1.0.0",
   "pythonVersion": "3.9.6",
   "randomSeed": 42,

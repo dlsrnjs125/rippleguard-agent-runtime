@@ -20,7 +20,7 @@ Training and inference both use `preprocess.v1.0.0`:
 The artifact digest is recorded in `artifacts/templates/phase2-loan-xgboost.v1.0.0.template.json` and rechecked against the Infra-materialized published manifest before every inference.
 The dataset digests are computed from the preprocessed feature matrix, labels, dtype, and shape.
 
-The committed manifest is a template and contains `${RUNTIME_IMAGE_DIGEST}`. It is not deployment evidence. `scripts/materialize_release_model_manifest.py` injects the actual image digest after image build, verifies the model artifact digest, validates the published manifest against `rippleguard-contracts`, and writes the output atomically. The placeholder token and source commit must not be substituted for the image digest.
+The committed manifest is a Contracts-valid template, not deployment evidence. `scripts/materialize_release_model_manifest.py` validates the template contract, injects the actual image digest and built Linux image platform after image build, verifies the model artifact digest, validates the published manifest against `rippleguard-contracts`, and writes the output atomically. The source commit must not be substituted for the image digest.
 
 Release ownership is intentionally split:
 

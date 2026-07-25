@@ -21,6 +21,7 @@ def test_materializes_valid_runtime_digest(tmp_path: Path) -> None:
     manifest = materialize_manifest(
         template_path=TEMPLATE,
         runtime_image_digest=VALID_DIGEST,
+        platform_architecture="linux/arm64",
         output_path=output,
         contracts_root=CONTRACTS,
         model_artifact_root=ARTIFACT_ROOT,
@@ -30,6 +31,7 @@ def test_materializes_valid_runtime_digest(tmp_path: Path) -> None:
 
     assert output.is_file()
     assert manifest["runtimeImageDigest"] == VALID_DIGEST
+    assert manifest["platformArchitecture"] == "linux/arm64"
     assert "manifestPublicationState" not in manifest
     assert json.loads(output.read_text(encoding="utf-8")) == manifest
     ContractValidator(CONTRACTS).validate("agent-output/tabular-model-manifest.v1.0.0.schema.json", manifest)
@@ -49,6 +51,7 @@ def test_rejects_invalid_runtime_image_digest(tmp_path: Path, digest: str) -> No
         materialize_manifest(
             template_path=TEMPLATE,
             runtime_image_digest=digest,
+            platform_architecture="linux/arm64",
             output_path=tmp_path / "model-manifest.json",
             contracts_root=CONTRACTS,
             model_artifact_root=ARTIFACT_ROOT,
@@ -60,6 +63,7 @@ def test_rejects_model_artifact_digest_mismatch(tmp_path: Path) -> None:
         materialize_manifest(
             template_path=TEMPLATE,
             runtime_image_digest=VALID_DIGEST,
+            platform_architecture="linux/arm64",
             output_path=tmp_path / "model-manifest.json",
             contracts_root=CONTRACTS,
             model_artifact_root=ARTIFACT_ROOT,
@@ -72,8 +76,55 @@ def test_rejects_model_version_mismatch(tmp_path: Path) -> None:
         materialize_manifest(
             template_path=TEMPLATE,
             runtime_image_digest=VALID_DIGEST,
+            platform_architecture="linux/arm64",
             output_path=tmp_path / "model-manifest.json",
             contracts_root=CONTRACTS,
             model_artifact_root=ARTIFACT_ROOT,
             expected_model_version="loan-model.v9.9.9",
+        )
+
+
+def test_rejects_template_that_fails_contract(tmp_path: Path) -> None:
+    invalid_template = tmp_path / "template.json"
+    template = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    template.pop("manifestPublicationState")
+    invalid_template.write_text(json.dumps(template), encoding="utf-8")
+
+    with pytest.raises(MaterializationError, match="template manifest failed contract validation"):
+        materialize_manifest(
+            template_path=invalid_template,
+            runtime_image_digest=VALID_DIGEST,
+            platform_architecture="linux/arm64",
+            output_path=tmp_path / "model-manifest.json",
+            contracts_root=CONTRACTS,
+            model_artifact_root=ARTIFACT_ROOT,
+        )
+
+
+def test_rejects_template_runtime_digest_token(tmp_path: Path) -> None:
+    invalid_template = tmp_path / "template.json"
+    template = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    template["runtimeImageDigest"] = "${RUNTIME_IMAGE_DIGEST}"
+    invalid_template.write_text(json.dumps(template), encoding="utf-8")
+
+    with pytest.raises(MaterializationError):
+        materialize_manifest(
+            template_path=invalid_template,
+            runtime_image_digest=VALID_DIGEST,
+            platform_architecture="linux/arm64",
+            output_path=tmp_path / "model-manifest.json",
+            contracts_root=CONTRACTS,
+            model_artifact_root=ARTIFACT_ROOT,
+        )
+
+
+def test_rejects_non_linux_platform_architecture(tmp_path: Path) -> None:
+    with pytest.raises(MaterializationError, match="built Linux image platform"):
+        materialize_manifest(
+            template_path=TEMPLATE,
+            runtime_image_digest=VALID_DIGEST,
+            platform_architecture="darwin/arm64",
+            output_path=tmp_path / "model-manifest.json",
+            contracts_root=CONTRACTS,
+            model_artifact_root=ARTIFACT_ROOT,
         )
