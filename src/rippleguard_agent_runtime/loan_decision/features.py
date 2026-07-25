@@ -7,7 +7,6 @@ from rippleguard_agent_runtime.domain.errors import AgentFailure
 from rippleguard_agent_runtime.loan_decision.preprocessing import preprocess_feature_vector
 from rippleguard_agent_runtime.ports.model import PreparedFeatures
 
-
 FEATURE_ORDER: tuple[str, ...] = (
     "annualIncome",
     "monthlyIncomeMean",

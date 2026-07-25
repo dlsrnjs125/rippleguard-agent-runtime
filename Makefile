@@ -1,8 +1,10 @@
-.PHONY: install install-training lint typecheck test contract-test integration-test reproducibility-test train-baseline build run verify assert-clean build-image verify-image-provenance release-image-check docker-build docker-run-readiness
+.PHONY: install install-training lint typecheck test contract-test integration-test reproducibility-test train-baseline build run verify assert-clean build-image verify-image-provenance release-image-check docker-build docker-run-readiness docker-run-readiness-test
 
 PYTHON ?= python3
 CONTRACTS_ROOT ?= ../rippleguard-contracts
-MODEL_MANIFEST_PATH ?= artifacts/manifests/phase2-loan-xgboost.v1.0.0.json
+TEST_MODEL_MANIFEST_PATH ?= tests/fixtures/model-manifest-valid.json
+MODEL_MANIFEST_PATH ?=
+RELEASE_MODEL_MANIFEST_PATH ?=
 MODEL_ARTIFACT_ROOT ?= artifacts/models
 OCI_SOURCE ?= https://github.com/dlsrnjs125/rippleguard-agent-runtime
 OCI_REVISION := $(shell git rev-parse HEAD)
@@ -21,16 +23,16 @@ typecheck:
 	$(PYTHON) -m mypy src
 
 test:
-	CONTRACTS_ROOT=$(CONTRACTS_ROOT) MODEL_MANIFEST_PATH=$(MODEL_MANIFEST_PATH) MODEL_ARTIFACT_ROOT=$(MODEL_ARTIFACT_ROOT) $(PYTHON) -m pytest tests/unit
+	CONTRACTS_ROOT=$(CONTRACTS_ROOT) MODEL_MANIFEST_PATH=$(TEST_MODEL_MANIFEST_PATH) MODEL_ARTIFACT_ROOT=$(MODEL_ARTIFACT_ROOT) $(PYTHON) -m pytest tests/unit
 
 contract-test:
-	CONTRACTS_ROOT=$(CONTRACTS_ROOT) MODEL_MANIFEST_PATH=$(MODEL_MANIFEST_PATH) MODEL_ARTIFACT_ROOT=$(MODEL_ARTIFACT_ROOT) $(PYTHON) -m pytest tests/contract
+	CONTRACTS_ROOT=$(CONTRACTS_ROOT) MODEL_MANIFEST_PATH=$(TEST_MODEL_MANIFEST_PATH) MODEL_ARTIFACT_ROOT=$(MODEL_ARTIFACT_ROOT) $(PYTHON) -m pytest tests/contract
 
 integration-test:
-	CONTRACTS_ROOT=$(CONTRACTS_ROOT) MODEL_MANIFEST_PATH=$(MODEL_MANIFEST_PATH) MODEL_ARTIFACT_ROOT=$(MODEL_ARTIFACT_ROOT) $(PYTHON) -m pytest tests/integration
+	CONTRACTS_ROOT=$(CONTRACTS_ROOT) MODEL_MANIFEST_PATH=$(TEST_MODEL_MANIFEST_PATH) MODEL_ARTIFACT_ROOT=$(MODEL_ARTIFACT_ROOT) $(PYTHON) -m pytest tests/integration
 
 reproducibility-test:
-	CONTRACTS_ROOT=$(CONTRACTS_ROOT) MODEL_MANIFEST_PATH=$(MODEL_MANIFEST_PATH) MODEL_ARTIFACT_ROOT=$(MODEL_ARTIFACT_ROOT) $(PYTHON) -m pytest tests/integration/test_reproducibility.py
+	CONTRACTS_ROOT=$(CONTRACTS_ROOT) MODEL_MANIFEST_PATH=$(TEST_MODEL_MANIFEST_PATH) MODEL_ARTIFACT_ROOT=$(MODEL_ARTIFACT_ROOT) $(PYTHON) -m pytest tests/integration/test_reproducibility.py
 
 train-baseline:
 	$(PYTHON) scripts/train_baseline_model.py --seed 42 --output-dir artifacts
@@ -39,6 +41,7 @@ build:
 	PYTHONPYCACHEPREFIX=.pycache $(PYTHON) -m compileall src
 
 run:
+	@test -n "$(MODEL_MANIFEST_PATH)" || (echo "MODEL_MANIFEST_PATH must point to a materialized release manifest" >&2; exit 1)
 	CONTRACTS_ROOT=$(CONTRACTS_ROOT) MODEL_MANIFEST_PATH=$(MODEL_MANIFEST_PATH) MODEL_ARTIFACT_ROOT=$(MODEL_ARTIFACT_ROOT) $(PYTHON) -m uvicorn rippleguard_agent_runtime.app.api:app --host 127.0.0.1 --port 8080
 
 verify: lint typecheck test contract-test integration-test reproducibility-test build
@@ -72,4 +75,16 @@ release-image-check: verify build-image verify-image-provenance
 docker-build: build-image
 
 docker-run-readiness:
-	docker run --rm -v $(abspath $(CONTRACTS_ROOT)):/app/contracts:ro "$(IMAGE_TAG)" python -m rippleguard_agent_runtime.app.readiness
+	@test -n "$(RELEASE_MODEL_MANIFEST_PATH)" || (echo "RELEASE_MODEL_MANIFEST_PATH must point to a materialized release manifest" >&2; exit 1)
+	docker run --rm \
+		-v $(abspath $(CONTRACTS_ROOT)):/app/contracts:ro \
+		-v $(abspath $(RELEASE_MODEL_MANIFEST_PATH)):/app/release/model-manifest.json:ro \
+		-e MODEL_MANIFEST_PATH=/app/release/model-manifest.json \
+		"$(IMAGE_TAG)" python -m rippleguard_agent_runtime.app.readiness
+
+docker-run-readiness-test:
+	docker run --rm \
+		-v $(abspath $(CONTRACTS_ROOT)):/app/contracts:ro \
+		-v $(abspath $(TEST_MODEL_MANIFEST_PATH)):/app/release/model-manifest.json:ro \
+		-e MODEL_MANIFEST_PATH=/app/release/model-manifest.json \
+		"$(IMAGE_TAG)" python -m rippleguard_agent_runtime.app.readiness

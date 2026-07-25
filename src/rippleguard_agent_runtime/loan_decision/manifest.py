@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ from rippleguard_agent_runtime.adapters.contracts import ContractValidator
 from rippleguard_agent_runtime.adapters.digest import file_sha256
 from rippleguard_agent_runtime.domain.errors import AgentFailure
 
+RUNTIME_IMAGE_DIGEST_RE = re.compile(r"^sha256:[a-f0-9]{64}$")
+
 
 def load_manifest(path: Path, validator: ContractValidator) -> dict[str, Any]:
     if not path.is_file():
@@ -20,7 +23,17 @@ def load_manifest(path: Path, validator: ContractValidator) -> dict[str, Any]:
     if not isinstance(manifest, dict):
         raise AgentFailure("BLOCKED", "MODEL_MANIFEST_NOT_FOUND", "Model manifest is not an object.")
     validator.validate("agent-output/tabular-model-manifest.v1.0.0.schema.json", manifest)
+    verify_runtime_image_digest(manifest)
     return manifest
+
+
+def verify_runtime_image_digest(manifest: dict[str, Any]) -> None:
+    digest = manifest.get("runtimeImageDigest")
+    if not isinstance(digest, str) or not RUNTIME_IMAGE_DIGEST_RE.fullmatch(digest):
+        raise AgentFailure("BLOCKED", "MODEL_MANIFEST_NOT_FOUND", "Runtime image digest is not materialized.")
+    hex_value = digest.removeprefix("sha256:")
+    if len(set(hex_value)) == 1:
+        raise AgentFailure("BLOCKED", "MODEL_MANIFEST_NOT_FOUND", "Runtime image digest is a placeholder.")
 
 
 def artifact_path(manifest: dict[str, Any], artifact_root: Path) -> Path:

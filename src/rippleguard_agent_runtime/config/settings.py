@@ -16,7 +16,7 @@ class Settings:
     port: int
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         return cls(
             app_env=_required("APP_ENV", "local"),
             contracts_root=Path(_required("CONTRACTS_ROOT")).expanduser(),

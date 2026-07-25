@@ -8,9 +8,8 @@ from typing import Any
 
 import pytest
 
-from rippleguard_agent_runtime.loan_decision.service import LoanDecisionAgentService
 from rippleguard_agent_runtime.loan_decision.features import feature_payload_digest
-
+from rippleguard_agent_runtime.loan_decision.service import LoanDecisionAgentService
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS = ROOT.parent / "rippleguard-contracts"
@@ -20,7 +19,7 @@ CONTRACTS = ROOT.parent / "rippleguard-contracts"
 def service() -> LoanDecisionAgentService:
     return LoanDecisionAgentService(
         contracts_root=CONTRACTS,
-        manifest_path=ROOT / "artifacts" / "manifests" / "phase2-loan-xgboost.v1.0.0.json",
+        manifest_path=ROOT / "tests" / "fixtures" / "model-manifest-valid.json",
         artifact_root=ROOT / "artifacts" / "models",
     )
 
@@ -33,7 +32,7 @@ def valid_request() -> dict[str, Any]:
     payload["snapshotReference"]["snapshotCreatedAt"] = (now - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
     payload["requestedAt"] = (now - timedelta(seconds=5)).isoformat().replace("+00:00", "Z")
     payload["deadlineAt"] = (now + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
-    manifest = json.loads((ROOT / "artifacts" / "manifests" / "phase2-loan-xgboost.v1.0.0.json").read_text())
+    manifest = json.loads((ROOT / "tests" / "fixtures" / "model-manifest-valid.json").read_text())
     payload["modelArtifactDigest"] = manifest["modelBinaryArtifactDigest"]
     payload["featurePayload"]["featurePayloadDigest"] = feature_payload_digest(payload["featurePayload"])
     return payload

@@ -4,7 +4,6 @@ from typing import Any
 
 import numpy as np
 
-
 MONEY_SCALE = 100_000_000.0
 COUNT_SCALE = 120.0
 MONTH_SCALE = 240.0

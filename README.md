@@ -30,7 +30,7 @@ Set `CONTRACTS_ROOT` to a local checkout of `rippleguard-contracts`.
 The implementation was built against contracts commit:
 
 ```text
-751f43c88c1bef860c76398eed24b3d60225b931 fix: guard phase 2 event causation contracts (#5)
+5781bd30f688c25ae0d531049d6d7fb39ec3e9b1 fix: define phase 2 provenance contracts (#6)
 ```
 
 ## Local Setup
@@ -45,7 +45,7 @@ Run locally:
 
 ```bash
 CONTRACTS_ROOT=../rippleguard-contracts \
-MODEL_MANIFEST_PATH=artifacts/manifests/phase2-loan-xgboost.v1.0.0.json \
+MODEL_MANIFEST_PATH=/path/to/materialized/phase2-loan-xgboost.v1.0.0.json \
 MODEL_ARTIFACT_ROOT=artifacts/models \
 python3 -m uvicorn rippleguard_agent_runtime.app.api:app --host 127.0.0.1 --port 8080
 ```
@@ -66,6 +66,24 @@ make train-baseline
 
 Runtime startup does not train models or choose fallback models.
 
+The committed source manifest is a template:
+
+```text
+artifacts/templates/phase2-loan-xgboost.v1.0.0.template.json
+```
+
+It is validated by the Contracts template schema and must not be used as release evidence or passed as `MODEL_MANIFEST_PATH`. Infra materializes the published manifest after the image build by injecting the immutable runtime image digest and built Linux image platform:
+
+```bash
+python3 scripts/materialize_release_model_manifest.py \
+  --template artifacts/templates/phase2-loan-xgboost.v1.0.0.template.json \
+  --runtime-image-digest sha256:<64 lowercase hex chars> \
+  --platform-architecture linux/arm64 \
+  --output /path/to/materialized/phase2-loan-xgboost.v1.0.0.json
+```
+
+`tests/fixtures/model-manifest-valid.json` is a contract-valid local test fixture only; it is not release evidence.
+
 The baseline artifact digest is:
 
 ```text
@@ -85,5 +103,5 @@ make verify-image-provenance
 - The model is a synthetic baseline for system reproducibility, not a real financial approval model.
 - LightGBM is trained as an offline comparison candidate, but runtime registers only the selected XGBoost model and no fallback.
 - Request deadlines are checked before execution and again before returning `COMPLETED`. Runtime does not perform internal retry orchestration; Governance owns retry policy and run scheduling.
-- `runtimeImageDigest` remains a schema-required candidate field until the deployment image digest is produced by the image build/release path. The committed `sha256:ffff...` value is a placeholder and must not be used as release evidence.
+- `runtimeImageDigest` is provided only by materialized release manifests. The runtime fails readiness when `MODEL_MANIFEST_PATH` points to the committed template or a placeholder digest.
 - Docker image expects contracts to be mounted at `/app/contracts` or supplied by deployment.
